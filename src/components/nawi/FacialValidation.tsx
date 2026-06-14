@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   X,
   RefreshCw,
@@ -78,25 +78,38 @@ export function FacialValidation({
   const [pin, setPin] = useState("");
   const [prevStage, setPrevStage] = useState<Stage>("FACE_NOTICE");
   const timersRef = useRef<number[]>([]);
+  const speakRef = useRef(speak);
 
-  // reset whenever opened
+  useEffect(() => {
+    speakRef.current = speak;
+  }, [speak]);
+
+  const clearTimers = useCallback(() => {
+    timersRef.current.forEach((id) => window.clearTimeout(id));
+    timersRef.current = [];
+  }, []);
+
+  // Se reinicia solo cuando se abre/cierra el modal.
+  // No debe depender de `speak`, porque cuando Ñawi habla se reiniciaba el modal.
   useEffect(() => {
     if (!open) return;
+
+    clearTimers();
     setStage("FACE_NOTICE");
     setPin("");
     setPrevStage("FACE_NOTICE");
-    // Only the Web channel speaks — WhatsApp must never trigger TTS.
-    if (sourceChannel === "web") speak?.(STAGE_INSTRUCTION.FACE_NOTICE);
-    return () => {
-      timersRef.current.forEach((id) => window.clearTimeout(id));
-      timersRef.current = [];
-    };
-  }, [open, speak, sourceChannel]);
+
+    if (sourceChannel === "web") {
+      speakRef.current?.(STAGE_INSTRUCTION.FACE_NOTICE);
+    }
+
+    return clearTimers;
+  }, [open, sourceChannel, clearTimers]);
 
   if (!open) return null;
 
   const announce = (text: string) => {
-    if (sourceChannel === "web") speak?.(text);
+    if (sourceChannel === "web") speakRef.current?.(text);
   };
 
   const goTo = (s: Stage) => {
@@ -106,30 +119,55 @@ export function FacialValidation({
   };
 
   // ---- Simulated guided progression ----
+  const setStageWithVoice = (nextStage: Stage) => {
+    setStage(nextStage);
+    announce(STAGE_INSTRUCTION[nextStage]);
+  };
+
+  // ---- Simulated guided progression ----
   const startSimulation = () => {
-    setStage("FACE_POSITIONING");
-    announce(STAGE_INSTRUCTION.FACE_POSITIONING);
+    clearTimers();
+    setStageWithVoice("FACE_POSITIONING");
+
+    const guidedSteps: Array<[Stage, number]> = [
+      ["FACE_DETECTED", 2200],
+      ["FACE_LIVENESS", 4200],
+      ["FACE_SUCCESS", 6500],
+    ];
+
+    guidedSteps.forEach(([nextStage, delay]) => {
+      const timerId = window.setTimeout(() => {
+        setStageWithVoice(nextStage);
+      }, delay);
+
+      timersRef.current.push(timerId);
+    });
   };
+
   const simDetected = () => {
-    setStage("FACE_DETECTED");
-    announce(STAGE_INSTRUCTION.FACE_DETECTED);
+    clearTimers();
+    setStageWithVoice("FACE_DETECTED");
   };
+
   const simLiveness = () => {
-    setStage("FACE_LIVENESS");
-    announce(STAGE_INSTRUCTION.FACE_LIVENESS);
-    const t = window.setTimeout(() => {
-      setStage("FACE_SUCCESS");
-      announce(STAGE_INSTRUCTION.FACE_SUCCESS);
+    clearTimers();
+    setStageWithVoice("FACE_LIVENESS");
+
+    const timerId = window.setTimeout(() => {
+      setStageWithVoice("FACE_SUCCESS");
     }, 900);
-    timersRef.current.push(t);
+
+    timersRef.current.push(timerId);
   };
+
   const simInstantSuccess = () => {
-    setStage("FACE_SUCCESS");
-    announce(STAGE_INSTRUCTION.FACE_SUCCESS);
+    clearTimers();
+    setStageWithVoice("FACE_SUCCESS");
   };
+
   const simFailure = () => {
-    setStage("FACE_FAILED");
-    announce(STAGE_INSTRUCTION.FACE_FAILED);
+    clearTimers();
+    setStageWithVoice("FACE_FAILED");
   };
 
   // ---- Resolution callbacks ----
@@ -186,8 +224,8 @@ export function FacialValidation({
 
         <div className="p-4">
           <p className="text-sm text-muted-foreground">
-            Este prototipo no compara tu rostro con RENIEC ni con una base oficial.
-            No se guardarán imágenes ni datos biométricos reales.
+            Este prototipo no compara tu rostro con RENIEC ni con una base oficial. No se guardarán
+            imágenes ni datos biométricos reales.
           </p>
 
           {showCamera && (
@@ -199,12 +237,12 @@ export function FacialValidation({
                     stage === "FACE_POSITIONING"
                       ? "border-warning/70"
                       : stage === "FACE_DETECTED" || stage === "FACE_LIVENESS"
-                      ? "border-audio/80"
-                      : stage === "FACE_SUCCESS"
-                      ? "border-audio"
-                      : stage === "FACE_FAILED"
-                      ? "border-destructive"
-                      : "border-white/40"
+                        ? "border-audio/80"
+                        : stage === "FACE_SUCCESS"
+                          ? "border-audio"
+                          : stage === "FACE_FAILED"
+                            ? "border-destructive"
+                            : "border-white/40"
                   }`}
                 >
                   <UserRound
@@ -242,20 +280,15 @@ export function FacialValidation({
             </div>
           )}
 
-          <p
-            className="mt-4 text-[17px] font-medium text-foreground"
-            aria-live="polite"
-          >
+          <p className="mt-4 text-[17px] font-medium text-foreground" aria-live="polite">
             {STAGE_INSTRUCTION[stage]}
           </p>
 
           {citizen.fullName && stage !== "FACE_CANCEL_CONFIRM" && (
             <p className="mt-2 text-sm text-muted-foreground">
               Vinculando a:{" "}
-              <span className="font-semibold text-foreground">
-                {citizen.fullName}
-              </span>{" "}
-              · DNI {citizen.dni}
+              <span className="font-semibold text-foreground">{citizen.fullName}</span> · DNI{" "}
+              {citizen.dni}
             </p>
           )}
 
@@ -393,7 +426,7 @@ export function FacialValidation({
           {stage === "FACE_FAILED" && (
             <div className="mt-4 grid gap-2">
               <button
-                onClick={() => goTo("FACE_POSITIONING")}
+                onClick={startSimulation}
                 className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-3 text-base font-semibold text-primary-foreground hover:bg-primary/90"
               >
                 <RefreshCw className="h-4 w-4" /> Reintentar validación
@@ -424,8 +457,8 @@ export function FacialValidation({
           {stage === "FACE_CANCEL_CONFIRM" && (
             <div className="mt-4 grid gap-2">
               <div className="rounded-md border-2 border-warning/30 bg-warning/10 p-3 text-sm font-medium text-foreground">
-                ¿Quieres cancelar la validación de identidad? Si cancelas, no podré
-                continuar con este trámite personal.
+                ¿Quieres cancelar la validación de identidad? Si cancelas, no podré continuar con
+                este trámite personal.
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -437,7 +470,11 @@ export function FacialValidation({
                 <button
                   onClick={() => {
                     setStage(prevStage === "FACE_CANCEL_CONFIRM" ? "FACE_NOTICE" : prevStage);
-                    announce(STAGE_INSTRUCTION[prevStage === "FACE_CANCEL_CONFIRM" ? "FACE_NOTICE" : prevStage]);
+                    announce(
+                      STAGE_INSTRUCTION[
+                        prevStage === "FACE_CANCEL_CONFIRM" ? "FACE_NOTICE" : prevStage
+                      ],
+                    );
                   }}
                   className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-3 text-base font-semibold text-primary-foreground hover:bg-primary/90"
                 >
@@ -461,10 +498,7 @@ export function FacialValidation({
 
           {(stage === "FACE_PIN" || stage === "FACE_PIN_FAILED") && (
             <div className="mt-4 grid gap-3">
-              <label
-                htmlFor="nawi-pin"
-                className="text-sm font-semibold text-foreground"
-              >
+              <label htmlFor="nawi-pin" className="text-sm font-semibold text-foreground">
                 Ingresa el PIN simulado (demo: 1234)
               </label>
               <input
@@ -473,9 +507,7 @@ export function FacialValidation({
                 pattern="\d*"
                 maxLength={4}
                 value={pin}
-                onChange={(e) =>
-                  setPin(e.target.value.replace(/\D/g, "").slice(0, 4))
-                }
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
                 className="w-32 rounded-md border-2 border-input bg-background px-3 py-2 text-center text-2xl font-bold tracking-[0.5em] outline-none focus:border-primary"
                 aria-label="PIN simulado de 4 dígitos"
               />

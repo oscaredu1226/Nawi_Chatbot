@@ -11,7 +11,7 @@ const SAMPLE_VOICE_NOTES = [
   "Necesito una constancia.",
   "Quiero ver el estado de mi trámite.",
   "Sí, es correcto.",
-  "Mi nombre es Óscar Soto Huamán.",
+  "Mi nombre es Oscar Soto Zorrilla.",
   "Mi DNI es 41234567.",
 ];
 

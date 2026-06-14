@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Mic, MicOff, Send, Volume2, Pause, Play, Square, RotateCw,
   Languages, ShieldCheck, ShieldAlert, CircleDot, Sparkles, Keyboard,
@@ -13,6 +13,15 @@ export function WebFlow() {
   const { state, speech, select, submitText, facialResult, facialCancel, facialPinSuccess, reset, replay } = agent;
   const [input, setInput] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
+  const speechSpeakRef = useRef(speech.speak);
+
+  useEffect(() => {
+    speechSpeakRef.current = speech.speak;
+  }, [speech.speak]);
+
+  const speakFacial = useCallback((text: string) => {
+    speechSpeakRef.current(text);
+  }, []);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -57,7 +66,9 @@ export function WebFlow() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className={`nawi-chip ${audioStatus.tone === "primary" ? "border-primary/40 bg-primary/10 text-primary" : "border-audio/40 bg-audio/10 text-audio"}`}>
+            <span
+              className={`nawi-chip ${audioStatus.tone === "primary" ? "border-primary/40 bg-primary/10 text-primary" : "border-audio/40 bg-audio/10 text-audio"}`}
+            >
               <Volume2 className="h-3.5 w-3.5" />
               {audioStatus.label}
             </span>
@@ -87,7 +98,10 @@ export function WebFlow() {
             />
           ))}
           {speech.isSpeaking && (
-            <div className="ml-1 inline-flex items-center gap-1 text-xs text-muted-foreground" aria-live="polite">
+            <div
+              className="ml-1 inline-flex items-center gap-1 text-xs text-muted-foreground"
+              aria-live="polite"
+            >
               <span className="h-1.5 w-1.5 rounded-full bg-primary animate-nawi-typing" />
               <span className="h-1.5 w-1.5 rounded-full bg-primary animate-nawi-typing [animation-delay:.15s]" />
               <span className="h-1.5 w-1.5 rounded-full bg-primary animate-nawi-typing [animation-delay:.3s]" />
@@ -118,7 +132,9 @@ export function WebFlow() {
               {speech.isListening ? <Mic className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
             </button>
             <div className="flex-1">
-              <label htmlFor="nawi-input" className="sr-only">Escribe tu respuesta a Ñawi</label>
+              <label htmlFor="nawi-input" className="sr-only">
+                Escribe tu respuesta a Ñawi
+              </label>
               <textarea
                 id="nawi-input"
                 rows={1}
@@ -148,7 +164,10 @@ export function WebFlow() {
             <QuickCmd label="Volver atrás" onClick={() => submitText("volver atrás")} />
             <QuickCmd label="Volver al menú" onClick={() => submitText("menú")} />
             <QuickCmd label="Cancelar" onClick={() => submitText("cancelar")} />
-            <QuickCmd label="Hablar con una persona" onClick={() => submitText("hablar con una persona")} />
+            <QuickCmd
+              label="Hablar con una persona"
+              onClick={() => submitText("hablar con una persona")}
+            />
             {!speech.caps.srAvailable && (
               <span className="nawi-chip border-warning/40 bg-warning/10 text-warning">
                 <Keyboard className="h-3.5 w-3.5" /> Entrada de voz simulada
@@ -161,20 +180,49 @@ export function WebFlow() {
       {/* Status panel */}
       <aside aria-label="Estado de la sesión" className="hidden md:block">
         <div className="nawi-card sticky top-4 p-4">
-          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Estado de la sesión</div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Estado de la sesión
+          </div>
           <StatusRow label="Canal" value="Web" icon={<Sparkles className="h-4 w-4" />} />
-          <StatusRow label="Idioma" value={state.language === "qu" ? "Quechua / Runa Simi" : "Español"} icon={<Languages className="h-4 w-4" />} />
-          <StatusRow label="Guía de voz" value={state.voiceMode ? "Activada" : "Desactivada"} icon={<Volume2 className="h-4 w-4" />} tone={state.voiceMode ? "audio" : "muted"} />
-          <StatusRow label="Audio" value={audioStatus.label} tone={audioStatus.tone === "primary" ? "primary" : "audio"} />
-          <StatusRow label="Micrófono" value={micStatus.label} icon={micStatus.icon} tone={micStatus.tone} />
+          <StatusRow
+            label="Idioma"
+            value={state.language === "qu" ? "Quechua / Runa Simi" : "Español"}
+            icon={<Languages className="h-4 w-4" />}
+          />
+          <StatusRow
+            label="Guía de voz"
+            value={state.voiceMode ? "Activada" : "Desactivada"}
+            icon={<Volume2 className="h-4 w-4" />}
+            tone={state.voiceMode ? "audio" : "muted"}
+          />
+          <StatusRow
+            label="Audio"
+            value={audioStatus.label}
+            tone={audioStatus.tone === "primary" ? "primary" : "audio"}
+          />
+          <StatusRow
+            label="Micrófono"
+            value={micStatus.label}
+            icon={micStatus.icon}
+            tone={micStatus.tone}
+          />
           <StatusRow
             label="Identidad"
             value={state.identityValidated ? "Validada para esta demo" : "No validada"}
-            icon={state.identityValidated ? <ShieldCheck className="h-4 w-4" /> : <ShieldAlert className="h-4 w-4" />}
+            icon={
+              state.identityValidated ? (
+                <ShieldCheck className="h-4 w-4" />
+              ) : (
+                <ShieldAlert className="h-4 w-4" />
+              )
+            }
             tone={state.identityValidated ? "audio" : "warning"}
           />
           {state.confirmed.fullName && (
-            <StatusRow label="Vinculado a" value={`${state.confirmed.fullName}${state.confirmed.dni ? ` · DNI ${state.confirmed.dni}` : ""}`} />
+            <StatusRow
+              label="Vinculado a"
+              value={`${state.confirmed.fullName}${state.confirmed.dni ? ` · DNI ${state.confirmed.dni}` : ""}`}
+            />
           )}
           {state.collected.fileNumber && (
             <StatusRow label="Expediente" value={state.collected.fileNumber} />
@@ -201,7 +249,7 @@ export function WebFlow() {
         onPinSuccess={() => facialPinSuccess()}
         onClose={() => facialCancel()}
         citizen={{ fullName: state.collected.fullName, dni: state.collected.dni }}
-        speak={(t) => speech.speak(t)}
+        speak={speakFacial}
         sourceChannel="web"
       />
     </div>

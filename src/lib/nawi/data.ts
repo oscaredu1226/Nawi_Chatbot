@@ -1,6 +1,6 @@
 // Simulated data for the Ñawi prototype. NEVER real personal data.
 export const DEMO_CITIZEN = {
-  fullName: "Óscar Soto Huamán",
+  fullName: "Oscar Soto Zorrilla",
   dni: "41234567",
   maskedDni: "••••••67",
   phone: "+51 900 000 000",
