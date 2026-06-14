@@ -70,6 +70,8 @@ export type Step =
   | "facial-consent"
   | "facial-module"
   | "facial-result"
+  | "facial-result-fail"
+  | "facial-cancelled"
   | "post-validation"
   | "choose-procedure"
   | "show-requirements"
