@@ -387,6 +387,27 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
     nawi(s, "Identidad validada para esta demo.", [
       { id: "continue", label: "Continuar", tone: "primary" },
     ]),
+  "facial-result-fail": (s) =>
+    nawi(
+      s,
+      "No se pudo validar tu identidad en esta demo. Puedes reintentar, usar otro método o hablar con una persona.",
+      [
+        { id: "retry", label: "Reintentar validación", tone: "primary" },
+        { id: "back", label: "Volver atrás" },
+        { id: "menu", label: "Volver al menú" },
+        { id: "human", label: "Hablar con una persona" },
+      ],
+    ),
+  "facial-cancelled": (s) =>
+    nawi(
+      s,
+      "Validación cancelada. No se mostró ni envió información personal.",
+      [
+        { id: "retry", label: "Reintentar validación", tone: "primary" },
+        { id: "menu", label: "Volver al menú" },
+        { id: "human", label: "Hablar con una persona" },
+      ],
+    ),
   "post-validation": (s) => {
     if (s.flowOrigin === "status") {
       return nawi(
