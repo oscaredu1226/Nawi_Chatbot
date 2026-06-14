@@ -749,10 +749,17 @@ function unclear(state: AgentState): AgentState {
 
 export function reducer(state: AgentState, action: EngineAction): AgentState {
   switch (action.type) {
-    case "INIT":
-      return pushNawi(initialState(action.channel), "welcome");
-    case "RESET":
-      return pushNawi(initialState(state.channel), "welcome");
+    case "INIT": {
+      const base = initialState(action.channel);
+      // WhatsApp skips the Web "voice toggle" welcome and starts at language.
+      const startStep: Step = action.channel === "whatsapp" ? "language" : "welcome";
+      return pushNawi(base, startStep);
+    }
+    case "RESET": {
+      const base = initialState(state.channel);
+      const startStep: Step = state.channel === "whatsapp" ? "language" : "welcome";
+      return pushNawi(base, startStep);
+    }
     case "SET_VOICE_MODE":
       return { ...state, voiceMode: action.voiceMode };
     case "GOTO":
@@ -769,12 +776,46 @@ export function reducer(state: AgentState, action: EngineAction): AgentState {
       return { ...next, notifiedFor: "EXP-0512-2026", flowOrigin: "notification" };
     }
     case "FACIAL_RESULT": {
-      const after = pushUser(state, action.success ? "[Validación exitosa]" : "[Validación fallida]");
+      const after = pushUser(
+        { ...state, facialModuleOpen: false },
+        action.success ? "[Validación facial exitosa]" : "[Validación facial fallida]",
+      );
       if (action.success) {
-        const validated = { ...after, identityValidated: true, confirmed: { ...after.confirmed, fullName: after.collected.fullName, dni: after.collected.dni } };
+        const validated = {
+          ...after,
+          identityValidated: true,
+          confirmed: {
+            ...after.confirmed,
+            fullName: after.collected.fullName,
+            dni: after.collected.dni,
+          },
+        };
         return pushNawi(validated, "post-validation");
       }
-      return pushNawi(after, "facial-result-fail" as any) ?? after;
+      return pushNawi(after, "facial-result-fail");
+    }
+    case "FACIAL_PIN_SUCCESS": {
+      const after = pushUser(
+        { ...state, facialModuleOpen: false },
+        "[Identidad validada por PIN simulado]",
+      );
+      const validated = {
+        ...after,
+        identityValidated: true,
+        confirmed: {
+          ...after.confirmed,
+          fullName: after.collected.fullName,
+          dni: after.collected.dni,
+        },
+      };
+      return pushNawi(validated, "post-validation");
+    }
+    case "FACIAL_CANCEL": {
+      const after = pushUser(
+        { ...state, facialModuleOpen: false },
+        "[Validación cancelada por el usuario]",
+      );
+      return pushNawi(after, "facial-cancelled");
     }
     case "SELECT": {
       return handleSelect(state, action.optionId);
