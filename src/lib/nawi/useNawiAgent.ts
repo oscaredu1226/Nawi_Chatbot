@@ -90,6 +90,8 @@ export function useNawiAgent(channel: Channel) {
     select,
     submitText,
     facialResult,
+    facialCancel,
+    facialPinSuccess,
     reset,
     replay,
   };
