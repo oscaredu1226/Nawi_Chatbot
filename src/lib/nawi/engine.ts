@@ -669,6 +669,8 @@ export type EngineAction =
   | { type: "SELECT"; optionId: string }
   | { type: "SUBMIT_TEXT"; text: string; asVoiceNote?: boolean }
   | { type: "FACIAL_RESULT"; success: boolean }
+  | { type: "FACIAL_CANCEL" }
+  | { type: "FACIAL_PIN_SUCCESS" }
   | { type: "PUSH_NAWI"; turn: Turn }
   | { type: "GOTO"; step: Step }
   | { type: "RESET" }
