@@ -3,6 +3,16 @@ import {
   PROCEDURES,
   SIM_FILES,
   digitByDigit,
+  getFileDate,
+  getFileLastMovement,
+  getFileObservation,
+  getFileOffice,
+  getFileProcedureName,
+  getFileStatus,
+  getProcedureEstimate,
+  getProcedureName,
+  getProcedureOffice,
+  getProcedureRequirements,
   type Procedure,
   type SimFile,
 } from "./data";
@@ -159,10 +169,6 @@ export function initialState(channel: Channel): AgentState {
 const id = () => Math.random().toString(36).slice(2, 10);
 const now = () => Date.now();
 
-function withOptions(opts: Option[]): Option[] {
-  return opts;
-}
-
 function optionsBlock(opts: Option[]) {
   return opts.map((o, i) => `${i + 1}. ${o.label}`).join(" ");
 }
@@ -200,22 +206,29 @@ function fileNumberForVoice(fileNumber: string, lang: Language): string {
 }
 
 function procedureRequirementsSpoken(p: Procedure, lang: Language): string {
-  const requirements = p.requirements
+  const procedureName = getProcedureName(p, lang);
+  const requirements = getProcedureRequirements(p, lang)
     .map((req, index) =>
       t(lang, `Requisito ${index + 1}: ${req}.`, `Munasqa ${index + 1}: ${req}.`),
     )
     .join(" ");
 
   return [
-    t(lang, `Datos del trámite ${p.name}.`, `${p.name} ruraypa willakuynin.`),
+    t(lang, `Datos del trámite ${procedureName}.`, `${procedureName} ruraypa willakuynin.`),
     requirements,
-    t(lang, `Plazo: ${p.estimate}.`, `Pacha: ${p.estimate}.`),
-    t(lang, `Oficina responsable: ${p.office}.`, `Kamachiq oficina: ${p.office}.`),
+    t(lang, `Plazo: ${getProcedureEstimate(p, lang)}.`, `Pacha: ${getProcedureEstimate(p, lang)}.`),
+    t(
+      lang,
+      `Oficina responsable: ${getProcedureOffice(p, lang)}.`,
+      `Kamachiq oficina: ${getProcedureOffice(p, lang)}.`,
+    ),
     t(lang, "Datos simulados para demostración.", "Demo hinalla willakuykuna."),
   ].join(" ");
 }
 
 function finalSummarySpoken(data: CollectedData, p: Procedure, lang: Language): string {
+  const procedureName = getProcedureName(p, lang);
+
   return [
     t(lang, "Resumen antes de enviar.", "Manaraq apachispa pisiyachisqa willakuy."),
     t(
@@ -228,7 +241,7 @@ function finalSummarySpoken(data: CollectedData, p: Procedure, lang: Language): 
       `DNI: ${data.dni ? digitByDigit(data.dni, lang) : "no registrado"}.`,
       `DNI: ${data.dni ? digitByDigit(data.dni, lang) : "mana qillqasqa"}.`,
     ),
-    t(lang, `Trámite: ${p.name}.`, `Ruray: ${p.name}.`),
+    t(lang, `Trámite: ${procedureName}.`, `Ruray: ${procedureName}.`),
     t(
       lang,
       `Motivo: ${valueOrFallback(data.motivo, "sin motivo específico")}.`,
@@ -250,6 +263,8 @@ function receiptSpoken(
   data: CollectedData,
   lang: Language,
 ): string {
+  const procedureName = getProcedureName(p, lang);
+
   return [
     t(lang, "Constancia simulada generada.", "Demo constancia ruwasqañam."),
     t(
@@ -257,7 +272,7 @@ function receiptSpoken(
       `Número de expediente: ${fileNumberForVoice(fileNumber, lang)}.`,
       `Expediente yupay: ${fileNumberForVoice(fileNumber, lang)}.`,
     ),
-    t(lang, `Trámite: ${p.name}.`, `Ruray: ${p.name}.`),
+    t(lang, `Trámite: ${procedureName}.`, `Ruray: ${procedureName}.`),
     t(
       lang,
       `A nombre de: ${valueOrFallback(data.fullName)}.`,
@@ -268,8 +283,12 @@ function receiptSpoken(
       `DNI: ${data.dni ? digitByDigit(data.dni, lang) : "no registrado"}.`,
       `DNI: ${data.dni ? digitByDigit(data.dni, lang) : "mana qillqasqa"}.`,
     ),
-    t(lang, `Oficina: ${p.office}.`, `Oficina: ${p.office}.`),
-    t(lang, `Plazo estimado: ${p.estimate}.`, `Unay pacha: ${p.estimate}.`),
+    t(lang, `Oficina: ${getProcedureOffice(p, lang)}.`, `Oficina: ${getProcedureOffice(p, lang)}.`),
+    t(
+      lang,
+      `Plazo estimado: ${getProcedureEstimate(p, lang)}.`,
+      `Unay pacha: ${getProcedureEstimate(p, lang)}.`,
+    ),
     t(lang, "Datos simulados para demostración.", "Demo hinalla willakuykuna."),
   ].join(" ");
 }
@@ -282,13 +301,37 @@ function fileStatusSpoken(file: SimFile, lang: Language): string {
       `Número de expediente: ${fileNumberForVoice(file.number, lang)}.`,
       `Expediente yupay: ${fileNumberForVoice(file.number, lang)}.`,
     ),
-    t(lang, `Trámite: ${file.procedureName}.`, `Ruray: ${file.procedureName}.`),
-    t(lang, `Estado actual: ${file.status}.`, `Kunan kaynin: ${file.status}.`),
-    t(lang, `Fecha de ingreso: ${file.date}.`, `Yaykusqan p'unchay: ${file.date}.`),
-    t(lang, `Oficina actual: ${file.office}.`, `Kunan oficina: ${file.office}.`),
-    t(lang, `Último movimiento: ${file.lastMovement}.`, `Qhipa kuyuy: ${file.lastMovement}.`),
-    file.observation
-      ? t(lang, `Observación: ${file.observation}.`, `Qhawarisqa: ${file.observation}.`)
+    t(
+      lang,
+      `Trámite: ${getFileProcedureName(file, lang)}.`,
+      `Ruray: ${getFileProcedureName(file, lang)}.`,
+    ),
+    t(
+      lang,
+      `Estado actual: ${getFileStatus(file, lang)}.`,
+      `Kunan kaynin: ${getFileStatus(file, lang)}.`,
+    ),
+    t(
+      lang,
+      `Fecha de ingreso: ${getFileDate(file, lang)}.`,
+      `Yaykusqan p'unchay: ${getFileDate(file, lang)}.`,
+    ),
+    t(
+      lang,
+      `Oficina actual: ${getFileOffice(file, lang)}.`,
+      `Kunan oficina: ${getFileOffice(file, lang)}.`,
+    ),
+    t(
+      lang,
+      `Último movimiento: ${getFileLastMovement(file, lang)}.`,
+      `Qhipa kuyuy: ${getFileLastMovement(file, lang)}.`,
+    ),
+    getFileObservation(file, lang)
+      ? t(
+          lang,
+          `Observación: ${getFileObservation(file, lang)}.`,
+          `Qhawarisqa: ${getFileObservation(file, lang)}.`,
+        )
       : "",
     t(lang, "Datos simulados para demostración.", "Demo hinalla willakuykuna."),
   ]
@@ -309,8 +352,14 @@ function fileListSpoken(files: SimFile[], lang: Language): string {
     .map((file, index) =>
       t(
         lang,
-        `Trámite ${index + 1}. Expediente ${fileNumberForVoice(file.number, lang)}. ${file.procedureName}. Estado: ${file.status}.`,
-        `Ruray ${index + 1}. Expediente ${fileNumberForVoice(file.number, lang)}. ${file.procedureName}. Kaynin: ${file.status}.`,
+        `Trámite ${index + 1}. Expediente ${fileNumberForVoice(file.number, lang)}. ${getFileProcedureName(
+          file,
+          lang,
+        )}. Estado: ${getFileStatus(file, lang)}.`,
+        `Ruray ${index + 1}. Expediente ${fileNumberForVoice(
+          file.number,
+          lang,
+        )}. ${getFileProcedureName(file, lang)}. Kaynin: ${getFileStatus(file, lang)}.`,
       ),
     )
     .join(" ");
@@ -330,12 +379,32 @@ function notificationSpoken(file: SimFile, lang: Language): string {
       `Expediente: ${fileNumberForVoice(file.number, lang)}.`,
       `Expediente: ${fileNumberForVoice(file.number, lang)}.`,
     ),
-    t(lang, `Trámite: ${file.procedureName}.`, `Ruray: ${file.procedureName}.`),
-    t(lang, `Estado actual: ${file.status}.`, `Kunan kaynin: ${file.status}.`),
-    t(lang, `Oficina actual: ${file.office}.`, `Kunan oficina: ${file.office}.`),
-    t(lang, `Último movimiento: ${file.lastMovement}.`, `Qhipa kuyuy: ${file.lastMovement}.`),
-    file.observation
-      ? t(lang, `Observación: ${file.observation}.`, `Qhawarisqa: ${file.observation}.`)
+    t(
+      lang,
+      `Trámite: ${getFileProcedureName(file, lang)}.`,
+      `Ruray: ${getFileProcedureName(file, lang)}.`,
+    ),
+    t(
+      lang,
+      `Estado actual: ${getFileStatus(file, lang)}.`,
+      `Kunan kaynin: ${getFileStatus(file, lang)}.`,
+    ),
+    t(
+      lang,
+      `Oficina actual: ${getFileOffice(file, lang)}.`,
+      `Kunan oficina: ${getFileOffice(file, lang)}.`,
+    ),
+    t(
+      lang,
+      `Último movimiento: ${getFileLastMovement(file, lang)}.`,
+      `Qhipa kuyuy: ${getFileLastMovement(file, lang)}.`,
+    ),
+    getFileObservation(file, lang)
+      ? t(
+          lang,
+          `Observación: ${getFileObservation(file, lang)}.`,
+          `Qhawarisqa: ${getFileObservation(file, lang)}.`,
+        )
       : "",
     t(lang, "Datos simulados para demostración.", "Demo hinalla willakuykuna."),
   ]
@@ -541,7 +610,11 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
         "Kay rikch'aq ruraykunata tarirqani. Hukninta akllay, munasqakunata qhawanaykipaq.",
       ),
       [
-        ...matches.map((p) => ({ id: p.id, label: p.name, synonyms: [p.name.toLowerCase()] })),
+        ...matches.map((p) => ({
+          id: p.id,
+          label: getProcedureName(p, s.language),
+          synonyms: [p.name.toLowerCase(), p.nameQu.toLowerCase()],
+        })),
         { id: "ninguna", label: ts(s, "Ninguna de estas", "Manam kaykunachu") },
       ],
     );
@@ -549,13 +622,14 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
 
   "req-confirm-proc": (s) => {
     const p = PROCEDURES.find((x) => x.id === s.collected.procedureId)!;
+    const procedureName = getProcedureName(p, s.language);
 
     return nawi(
       s,
       ts(
         s,
-        `Entendí que quieres consultar: ${p.name}. ¿Es correcto?`,
-        `Kayta tapuyta munanki nispa hamut'arqani: ${p.name}. Chaychu?`,
+        `Entendí que quieres consultar: ${procedureName}. ¿Es correcto?`,
+        `Kayta tapuyta munanki nispa hamut'arqani: ${procedureName}. Chaychu?`,
       ),
       [
         {
@@ -577,13 +651,14 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
 
   "req-result": (s) => {
     const p = PROCEDURES.find((x) => x.id === s.collected.procedureId)!;
+    const procedureName = getProcedureName(p, s.language);
 
     return nawi(
       s,
       ts(
         s,
-        `Encontré el trámite: ${p.name}. Esta información es pública y no requiere validar identidad. ¿Qué quieres hacer ahora?`,
-        `Kay rurayta tarirqani: ${p.name}. Kay willakuyqa llaqta willakuymi, identidadta chiqaqchayta mana munanchu. Kunan imata ruwanayta munanki?`,
+        `Encontré el trámite: ${procedureName}. Esta información es pública y no requiere validar identidad. ¿Qué quieres hacer ahora?`,
+        `Kay rurayta tarirqani: ${procedureName}. Kay willakuyqa llaqta willakuymi, identidadta chiqaqchayta mana munanchu. Kunan imata ruwanayta munanki?`,
       ),
       [
         {
@@ -890,13 +965,14 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
 
     if (pid) {
       const p = PROCEDURES.find((x) => x.id === pid)!;
+      const procedureName = getProcedureName(p, s.language);
 
       return nawi(
         s,
         ts(
           s,
-          `Identidad validada para esta demo. Continuaremos con: ${p.name}, a nombre de ${s.confirmed.fullName}, DNI ${s.confirmed.dni}. ¿Es correcto?`,
-          `Identidadniyki kay demopaq chiqaqchasqañam. Kay ruraywan qatisun: ${p.name}, ${s.confirmed.fullName} sutipi, DNI ${s.confirmed.dni}. Allinchu?`,
+          `Identidad validada para esta demo. Continuaremos con: ${procedureName}, a nombre de ${s.confirmed.fullName}, DNI ${s.confirmed.dni}. ¿Es correcto?`,
+          `Identidadniyki kay demopaq chiqaqchasqañam. Kay ruraywan qatisun: ${procedureName}, ${s.confirmed.fullName} sutipi, DNI ${s.confirmed.dni}. Allinchu?`,
         ),
         [
           {
@@ -916,26 +992,35 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
     }
 
     return nawi(s, ts(s, "¿Qué trámite quieres iniciar?", "Ima rurayta qallariyta munanki?"), [
-      ...PROCEDURES.map((p) => ({ id: p.id, label: p.name, synonyms: [p.name.toLowerCase()] })),
+      ...PROCEDURES.map((p) => ({
+        id: p.id,
+        label: getProcedureName(p, s.language),
+        synonyms: [p.name.toLowerCase(), p.nameQu.toLowerCase()],
+      })),
       { id: "no-se", label: ts(s, "No sé cuál necesito", "Mayqinta munasqayta manam yachanichu") },
     ]);
   },
 
   "choose-procedure": (s) =>
     nawi(s, ts(s, "¿Qué trámite quieres iniciar?", "Ima rurayta qallariyta munanki?"), [
-      ...PROCEDURES.map((p) => ({ id: p.id, label: p.name })),
+      ...PROCEDURES.map((p) => ({
+        id: p.id,
+        label: getProcedureName(p, s.language),
+        synonyms: [p.name.toLowerCase(), p.nameQu.toLowerCase()],
+      })),
       { id: "no-se", label: ts(s, "No sé cuál necesito", "Mayqinta munasqayta manam yachanichu") },
     ]),
 
   "show-requirements": (s) => {
     const p = PROCEDURES.find((x) => x.id === s.collected.procedureId)!;
+    const procedureName = getProcedureName(p, s.language);
 
     return nawi(
       s,
       ts(
         s,
-        `Antes de iniciar, estos son los requisitos de ${p.name}. ¿Quieres continuar con este trámite?`,
-        `${p.name} rurayta qallarinapaq kay munasqakunam kachkan. Kay ruraywan qatiyta munankichu?`,
+        `Antes de iniciar, estos son los requisitos de ${procedureName}. ¿Quieres continuar con este trámite?`,
+        `${procedureName} rurayta qallarinapaq kay munasqakunam kachkan. Kay ruraywan qatiyta munankichu?`,
       ),
       [
         {
@@ -1186,8 +1271,13 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
       s,
       ts(
         s,
-        `Tu trámite ${f.procedureName}, expediente ${f.number}, está ${f.status}.`,
-        `Rurayniyki ${f.procedureName}, expediente ${fileNumberForVoice(f.number, s.language)}, kayninqa ${f.status}.`,
+        `Tu trámite ${getFileProcedureName(f, s.language)}, expediente ${
+          f.number
+        }, está ${getFileStatus(f, s.language)}.`,
+        `Rurayniyki ${getFileProcedureName(f, s.language)}, expediente ${fileNumberForVoice(
+          f.number,
+          s.language,
+        )}, kayninqa ${getFileStatus(f, s.language)}.`,
       ),
       opts,
       {
@@ -1210,7 +1300,10 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
       [
         ...mine.map((f) => ({
           id: f.number,
-          label: `${f.number} — ${f.procedureName} — ${f.status}`,
+          label: `${f.number} — ${getFileProcedureName(f, s.language)} — ${getFileStatus(
+            f,
+            s.language,
+          )}`,
         })),
         { id: "other", label: ts(s, "Consultar otro expediente", "Huk expedienteta tapuy") },
         { id: "menu", label: ts(s, "Volver al menú", "Menuman kutiy") },
@@ -1224,13 +1317,14 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
 
   observed: (s) => {
     const f = SIM_FILES.find((x) => x.number === s.collected.fileNumber)!;
+    const observation = getFileObservation(f, s.language) ?? "";
 
     return nawi(
       s,
       ts(
         s,
-        `Tu trámite fue observado. ${f.observation ?? ""} Puedes corregirlo desde aquí.`,
-        `Rurayniykiqa observado kachkan. ${f.observation ?? ""} Kaymanta allinchayta atinki.`,
+        `Tu trámite fue observado. ${observation} Puedes corregirlo desde aquí.`,
+        `Rurayniykiqa observado kachkan. ${observation} Kaymanta allinchayta atinki.`,
       ),
       [
         { id: "fix", label: ts(s, "Corregir ahora", "Kunan allinchay"), tone: "primary" },
@@ -1304,7 +1398,10 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
       ts(
         s,
         `Novedad en tu trámite: el expediente ${f.number} tiene una actualización.`,
-        `Rurayniykipi musuq willakuy kachkan: expediente ${fileNumberForVoice(f.number, s.language)} huk musuq willakuyuqmi.`,
+        `Rurayniykipi musuq willakuy kachkan: expediente ${fileNumberForVoice(
+          f.number,
+          s.language,
+        )} huk musuq willakuyuqmi.`,
       ),
       [
         { id: "details", label: ts(s, "Ver detalles", "Sut'inchayta qhaway"), tone: "primary" },
