@@ -197,9 +197,12 @@ export function WebFlow() {
       <FacialValidation
         open={state.facialModuleOpen}
         onResult={(ok) => facialResult(ok)}
-        onClose={() => facialResult(false)}
+        onCancel={() => facialCancel()}
+        onPinSuccess={() => facialPinSuccess()}
+        onClose={() => facialCancel()}
         citizen={{ fullName: state.collected.fullName, dni: state.collected.dni }}
         speak={(t) => speech.speak(t)}
+        sourceChannel="web"
       />
     </div>
   );
