@@ -132,7 +132,7 @@ export function initialState(channel: Channel): AgentState {
     channel,
     language: "es",
     voiceMode: false,
-    step: "welcome",
+    step: "language",
     turns: [],
     history: [],
     collected: {},
@@ -344,21 +344,46 @@ function nawi(
 }
 
 const STEP_BUILDERS: Record<Step, StepBuild> = {
-  welcome: (s) =>
+  language: (s) =>
     nawi(
       s,
-      "Hola, soy Ñawi, tu asistente digital accesible del Gobierno Regional de Cusco. Esta es una demo accesible. Antes de comenzar, elige cómo quieres usar Ñawi.",
+      "Antes de comenzar, elige el idioma en el que quieres usar Ñawi. Puedes elegir Español o Quechua, también llamado Runa Simi.",
       [
-        { id: "voice", label: "Iniciar Ñawi con voz y permitir micrófono", tone: "primary" },
-        { id: "novoice", label: "Usar sin guía de voz" },
+        {
+          id: "es",
+          label: "Español",
+          synonyms: ["espanol", "español", "castellano", "opcion uno", "opción uno", "uno"],
+          tone: "primary",
+        },
+        {
+          id: "qu",
+          label: "Quechua / Runa Simi",
+          synonyms: ["quechua", "runa simi", "runasimi", "runa", "opcion dos", "opción dos", "dos"],
+        },
       ],
     ),
 
-  language: (s) =>
-    nawi(s, "Elige el idioma en el que quieres usar Ñawi.", [
-      { id: "es", label: "Español", synonyms: ["espanol", "castellano"] },
-      { id: "qu", label: "Quechua / Runa Simi", synonyms: ["quechua", "runa simi"] },
-    ]),
+  welcome: (s) =>
+    nawi(
+      s,
+      s.language === "qu"
+        ? "Allin hamusqayki. Soy Ñawi, asistente digital accesible del Gobierno Regional de Cusco. Esta es una demo. Ahora elige si quieres usar Ñawi con guía de voz o sin guía de voz."
+        : "Hola, soy Ñawi, tu asistente digital accesible del Gobierno Regional de Cusco. Esta es una demo accesible. Ahora elige si quieres usar Ñawi con guía de voz o sin guía de voz.",
+      [
+        {
+          id: "voice",
+          label:
+            s.language === "qu" ? "Usar Ñawi con voz" : "Iniciar Ñawi con voz y permitir micrófono",
+          synonyms: ["voz", "con voz", "microfono", "micrófono", "opcion uno", "opción uno", "uno"],
+          tone: "primary",
+        },
+        {
+          id: "novoice",
+          label: s.language === "qu" ? "Usar sin voz" : "Usar sin guía de voz",
+          synonyms: ["sin voz", "sin guia", "sin guía", "opcion dos", "opción dos", "dos"],
+        },
+      ],
+    ),
 
   menu: (s) =>
     nawi(s, "Estoy aquí para ayudarte. ¿Qué deseas hacer hoy?", [
@@ -943,14 +968,12 @@ export function reducer(state: AgentState, action: EngineAction): AgentState {
   switch (action.type) {
     case "INIT": {
       const base = initialState(action.channel);
-      const startStep: Step = action.channel === "whatsapp" ? "language" : "welcome";
-      return pushNawi(base, startStep);
+      return pushNawi(base, "language");
     }
 
     case "RESET": {
       const base = initialState(state.channel);
-      const startStep: Step = state.channel === "whatsapp" ? "language" : "welcome";
-      return pushNawi(base, startStep);
+      return pushNawi(base, "language");
     }
 
     case "SET_VOICE_MODE":
@@ -1162,21 +1185,26 @@ function handleSelect(state: AgentState, optionId: string): AgentState {
   if (optionId === "end") return pushNawi(state, "cancelled");
 
   switch (state.step) {
+    case "language": {
+      const lang: Language = optionId === "qu" ? "qu" : "es";
+
+      if (state.channel === "web") {
+        return pushNawi({ ...state, language: lang }, "welcome");
+      }
+
+      return pushNawi({ ...state, language: lang }, "menu");
+    }
+
     case "welcome":
       if (optionId === "voice") {
-        return pushNawi({ ...state, voiceMode: true }, "language");
+        return pushNawi({ ...state, voiceMode: true }, "menu");
       }
 
       if (optionId === "novoice") {
-        return pushNawi({ ...state, voiceMode: false }, "language");
+        return pushNawi({ ...state, voiceMode: false }, "menu");
       }
 
       break;
-
-    case "language": {
-      const lang: Language = optionId === "qu" ? "qu" : "es";
-      return pushNawi({ ...state, language: lang }, "menu");
-    }
 
     case "menu":
       if (optionId === "req") {
