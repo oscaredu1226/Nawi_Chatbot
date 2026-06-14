@@ -249,7 +249,7 @@ function WAMessage({ turn, onOption }: { turn: Turn; onOption: (id: string) => v
               </div>
             ))}
             <div className="mt-1 italic text-muted-foreground">
-              Puedes responder escribiendo el número, escribiendo la opción o enviando una nota de voz.
+              Responde seleccionando una opción o escribiendo el número. También puedes enviar una nota de voz manualmente.
             </div>
           </div>
         )}
