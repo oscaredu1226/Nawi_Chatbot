@@ -17,7 +17,7 @@ const SAMPLE_VOICE_NOTES = [
 
 export function WhatsAppFlow() {
   const agent = useNawiAgent("whatsapp");
-  const { state, select, submitText, facialResult } = agent;
+  const { state, select, submitText, facialResult, facialCancel, facialPinSuccess } = agent;
   const [input, setInput] = useState("");
   const [showVoiceMenu, setShowVoiceMenu] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
