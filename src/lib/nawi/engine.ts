@@ -22,19 +22,12 @@ export type Turn = {
   id: string;
   from: "nawi" | "user";
   text: string;
-  /** spoken-only text (Web TTS prompt incl. options + cue). If absent, uses `text`. */
   spoken?: string;
-  /** for user voice notes in WhatsApp */
   isVoiceNote?: boolean;
-  /** simulated transcription (WhatsApp) */
   transcription?: string;
-  /** options rendered as buttons under bubble */
   options?: Option[];
-  /** sim card payload to render inline */
   card?: InlineCard;
-  /** mark this Ñawi turn as simulated-data note */
   simulatedNote?: boolean;
-  /** timestamp */
   at: number;
 };
 
@@ -47,8 +40,8 @@ export type InlineCard =
   | { kind: "notification"; file: SimFile };
 
 export type Step =
-  | "welcome"
   | "language"
+  | "welcome"
   | "menu"
   | "req-ask"
   | "req-category"
@@ -108,23 +101,41 @@ export type AgentState = {
   identityValidated: boolean;
   unclearCount: number;
   currentOptions: Option[];
-  /** set when an inline facial module should open */
   facialModuleOpen: boolean;
-  /** set when notification has been pushed */
   notifiedFor?: string;
-  /** intent to resume after facial validation finishes */
   resumeAfterFacial?: Step;
   flowOrigin?: "start-procedure" | "status" | "observed" | "notification";
 };
 
-// ---------- Speaking cues ----------
-const CUE_WEB = "Ahora puedes decir la opción que prefieras.";
-const CUE_WEB_SAY = "Ahora puedes hablar.";
-const CUE_WHATSAPP = "Responde seleccionando una opción o escribiendo el número.";
+// ---------- i18n ----------
+function t(lang: Language, es: string, qu: string): string {
+  return lang === "qu" ? qu : es;
+}
 
-export function speakingCue(channel: Channel, kind: "say" | "options" = "options") {
-  if (channel === "web") return kind === "say" ? CUE_WEB_SAY : CUE_WEB;
-  return CUE_WHATSAPP;
+function ts(s: AgentState, es: string, qu: string): string {
+  return t(s.language, es, qu);
+}
+
+const CUE_WEB_ES = "Ahora puedes decir la opción que prefieras.";
+const CUE_WEB_SAY_ES = "Ahora puedes hablar.";
+const CUE_WHATSAPP_ES = "Responde seleccionando una opción o escribiendo el número.";
+
+const CUE_WEB_QU = "Kunan munasqayki akllanata niykuwaq.";
+const CUE_WEB_SAY_QU = "Kunan rimayta atinki.";
+const CUE_WHATSAPP_QU = "Huk akllanata akllay utaq yupayta qillqay.";
+
+export function speakingCue(
+  channel: Channel,
+  kind: "say" | "options" = "options",
+  lang: Language = "es",
+) {
+  if (lang === "qu") {
+    if (channel === "web") return kind === "say" ? CUE_WEB_SAY_QU : CUE_WEB_QU;
+    return CUE_WHATSAPP_QU;
+  }
+
+  if (channel === "web") return kind === "say" ? CUE_WEB_SAY_ES : CUE_WEB_ES;
+  return CUE_WHATSAPP_ES;
 }
 
 export function initialState(channel: Channel): AgentState {
@@ -144,7 +155,7 @@ export function initialState(channel: Channel): AgentState {
   };
 }
 
-// ---------- Helpers to build prompts ----------
+// ---------- Helpers ----------
 const id = () => Math.random().toString(36).slice(2, 10);
 const now = () => Date.now();
 
@@ -161,17 +172,18 @@ function buildSpokenPrompt(
   body: string,
   opts: Option[],
   cueKind: "say" | "options" = "options",
+  lang: Language = "es",
 ): string {
   if (opts.length === 0) {
-    return channel === "web" ? `${body} ${speakingCue(channel, "say")}` : body;
+    return channel === "web" ? `${body} ${speakingCue(channel, "say", lang)}` : body;
   }
 
-  const parts = [body, `Opciones disponibles: ${optionsBlock(opts)}`];
-  parts.push(speakingCue(channel, cueKind));
-  return parts.join(" ");
+  const optionsTitle = t(lang, "Opciones disponibles:", "Akllanapaq kaykunam kachkan:");
+  return [body, `${optionsTitle} ${optionsBlock(opts)}`, speakingCue(channel, cueKind, lang)].join(
+    " ",
+  );
 }
 
-// ---------- Helpers para leer automáticamente las cards ----------
 function valueOrFallback(value: string | undefined, fallback = "no registrado"): string {
   return value && value.trim().length > 0 ? value : fallback;
 }
@@ -180,43 +192,55 @@ function fileNumberForVoice(fileNumber: string, lang: Language): string {
   return fileNumber
     .split("-")
     .map((part) => {
-      if (/^\d+$/.test(part)) {
-        return digitByDigit(part, lang);
-      }
-
-      if (/^[a-zA-Z]+$/.test(part)) {
-        return part.toUpperCase().split("").join(" ");
-      }
-
+      if (/^\d+$/.test(part)) return digitByDigit(part, lang);
+      if (/^[a-zA-Z]+$/.test(part)) return part.toUpperCase().split("").join(" ");
       return part;
     })
     .join(" guion ");
 }
 
-function procedureRequirementsSpoken(p: Procedure): string {
+function procedureRequirementsSpoken(p: Procedure, lang: Language): string {
   const requirements = p.requirements
-    .map((req, index) => `Requisito ${index + 1}: ${req}.`)
+    .map((req, index) =>
+      t(lang, `Requisito ${index + 1}: ${req}.`, `Munasqa ${index + 1}: ${req}.`),
+    )
     .join(" ");
 
   return [
-    `Datos del trámite ${p.name}.`,
+    t(lang, `Datos del trámite ${p.name}.`, `${p.name} ruraypa willakuynin.`),
     requirements,
-    `Plazo: ${p.estimate}.`,
-    `Oficina responsable: ${p.office}.`,
-    "Datos simulados para demostración.",
+    t(lang, `Plazo: ${p.estimate}.`, `Pacha: ${p.estimate}.`),
+    t(lang, `Oficina responsable: ${p.office}.`, `Kamachiq oficina: ${p.office}.`),
+    t(lang, "Datos simulados para demostración.", "Demo hinalla willakuykuna."),
   ].join(" ");
 }
 
 function finalSummarySpoken(data: CollectedData, p: Procedure, lang: Language): string {
   return [
-    "Resumen antes de enviar.",
-    `Nombre: ${valueOrFallback(data.fullName)}.`,
-    `DNI: ${data.dni ? digitByDigit(data.dni, lang) : "no registrado"}.`,
-    `Trámite: ${p.name}.`,
-    `Motivo: ${valueOrFallback(data.motivo, "sin motivo específico")}.`,
-    `Adjunto: ${valueOrFallback(data.attachment, "sin adjunto")}.`,
-    "Identidad: validada para esta demo.",
-    "Datos simulados para demostración.",
+    t(lang, "Resumen antes de enviar.", "Manaraq apachispa pisiyachisqa willakuy."),
+    t(
+      lang,
+      `Nombre: ${valueOrFallback(data.fullName)}.`,
+      `Suti: ${valueOrFallback(data.fullName)}.`,
+    ),
+    t(
+      lang,
+      `DNI: ${data.dni ? digitByDigit(data.dni, lang) : "no registrado"}.`,
+      `DNI: ${data.dni ? digitByDigit(data.dni, lang) : "mana qillqasqa"}.`,
+    ),
+    t(lang, `Trámite: ${p.name}.`, `Ruray: ${p.name}.`),
+    t(
+      lang,
+      `Motivo: ${valueOrFallback(data.motivo, "sin motivo específico")}.`,
+      `Imarayku: ${valueOrFallback(data.motivo, "mana sut'i imaraykuyuq")}.`,
+    ),
+    t(
+      lang,
+      `Adjunto: ${valueOrFallback(data.attachment, "sin adjunto")}.`,
+      `Yapasqa qillqa: ${valueOrFallback(data.attachment, "mana yapasqa qillqayuq")}.`,
+    ),
+    t(lang, "Identidad: validada para esta demo.", "Identidad: kay demopaq chiqaqchasqa."),
+    t(lang, "Datos simulados para demostración.", "Demo hinalla willakuykuna."),
   ].join(" ");
 }
 
@@ -227,28 +251,46 @@ function receiptSpoken(
   lang: Language,
 ): string {
   return [
-    "Constancia simulada generada.",
-    `Número de expediente: ${fileNumberForVoice(fileNumber, lang)}.`,
-    `Trámite: ${p.name}.`,
-    `A nombre de: ${valueOrFallback(data.fullName)}.`,
-    `DNI: ${data.dni ? digitByDigit(data.dni, lang) : "no registrado"}.`,
-    `Oficina: ${p.office}.`,
-    `Plazo estimado: ${p.estimate}.`,
-    "Datos simulados para demostración.",
+    t(lang, "Constancia simulada generada.", "Demo constancia ruwasqañam."),
+    t(
+      lang,
+      `Número de expediente: ${fileNumberForVoice(fileNumber, lang)}.`,
+      `Expediente yupay: ${fileNumberForVoice(fileNumber, lang)}.`,
+    ),
+    t(lang, `Trámite: ${p.name}.`, `Ruray: ${p.name}.`),
+    t(
+      lang,
+      `A nombre de: ${valueOrFallback(data.fullName)}.`,
+      `Sutipi: ${valueOrFallback(data.fullName)}.`,
+    ),
+    t(
+      lang,
+      `DNI: ${data.dni ? digitByDigit(data.dni, lang) : "no registrado"}.`,
+      `DNI: ${data.dni ? digitByDigit(data.dni, lang) : "mana qillqasqa"}.`,
+    ),
+    t(lang, `Oficina: ${p.office}.`, `Oficina: ${p.office}.`),
+    t(lang, `Plazo estimado: ${p.estimate}.`, `Unay pacha: ${p.estimate}.`),
+    t(lang, "Datos simulados para demostración.", "Demo hinalla willakuykuna."),
   ].join(" ");
 }
 
 function fileStatusSpoken(file: SimFile, lang: Language): string {
   return [
-    "Detalle del expediente.",
-    `Número de expediente: ${fileNumberForVoice(file.number, lang)}.`,
-    `Trámite: ${file.procedureName}.`,
-    `Estado actual: ${file.status}.`,
-    `Fecha de ingreso: ${file.date}.`,
-    `Oficina actual: ${file.office}.`,
-    `Último movimiento: ${file.lastMovement}.`,
-    file.observation ? `Observación: ${file.observation}.` : "",
-    "Datos simulados para demostración.",
+    t(lang, "Detalle del expediente.", "Expedientepa sut'inchaynin."),
+    t(
+      lang,
+      `Número de expediente: ${fileNumberForVoice(file.number, lang)}.`,
+      `Expediente yupay: ${fileNumberForVoice(file.number, lang)}.`,
+    ),
+    t(lang, `Trámite: ${file.procedureName}.`, `Ruray: ${file.procedureName}.`),
+    t(lang, `Estado actual: ${file.status}.`, `Kunan kaynin: ${file.status}.`),
+    t(lang, `Fecha de ingreso: ${file.date}.`, `Yaykusqan p'unchay: ${file.date}.`),
+    t(lang, `Oficina actual: ${file.office}.`, `Kunan oficina: ${file.office}.`),
+    t(lang, `Último movimiento: ${file.lastMovement}.`, `Qhipa kuyuy: ${file.lastMovement}.`),
+    file.observation
+      ? t(lang, `Observación: ${file.observation}.`, `Qhawarisqa: ${file.observation}.`)
+      : "",
+    t(lang, "Datos simulados para demostración.", "Demo hinalla willakuykuna."),
   ]
     .filter(Boolean)
     .join(" ");
@@ -256,32 +298,46 @@ function fileStatusSpoken(file: SimFile, lang: Language): string {
 
 function fileListSpoken(files: SimFile[], lang: Language): string {
   if (files.length === 0) {
-    return "No se encontraron trámites vinculados. Datos simulados para demostración.";
+    return t(
+      lang,
+      "No se encontraron trámites vinculados. Datos simulados para demostración.",
+      "Manam watasqa ruraykunata tarirqanichu. Demo hinalla willakuykuna.",
+    );
   }
 
   const items = files
-    .map(
-      (file, index) =>
-        `Trámite ${index + 1}. Expediente ${fileNumberForVoice(
-          file.number,
-          lang,
-        )}. ${file.procedureName}. Estado: ${file.status}.`,
+    .map((file, index) =>
+      t(
+        lang,
+        `Trámite ${index + 1}. Expediente ${fileNumberForVoice(file.number, lang)}. ${file.procedureName}. Estado: ${file.status}.`,
+        `Ruray ${index + 1}. Expediente ${fileNumberForVoice(file.number, lang)}. ${file.procedureName}. Kaynin: ${file.status}.`,
+      ),
     )
     .join(" ");
 
-  return ["Tus trámites vinculados.", items, "Datos simulados para demostración."].join(" ");
+  return [
+    t(lang, "Tus trámites vinculados.", "Qampa watasqa ruraynikikuna."),
+    items,
+    t(lang, "Datos simulados para demostración.", "Demo hinalla willakuykuna."),
+  ].join(" ");
 }
 
 function notificationSpoken(file: SimFile, lang: Language): string {
   return [
-    "Novedad simulada.",
-    `Expediente: ${fileNumberForVoice(file.number, lang)}.`,
-    `Trámite: ${file.procedureName}.`,
-    `Estado actual: ${file.status}.`,
-    `Oficina actual: ${file.office}.`,
-    `Último movimiento: ${file.lastMovement}.`,
-    file.observation ? `Observación: ${file.observation}.` : "",
-    "Datos simulados para demostración.",
+    t(lang, "Novedad simulada.", "Demo musuq willakuy."),
+    t(
+      lang,
+      `Expediente: ${fileNumberForVoice(file.number, lang)}.`,
+      `Expediente: ${fileNumberForVoice(file.number, lang)}.`,
+    ),
+    t(lang, `Trámite: ${file.procedureName}.`, `Ruray: ${file.procedureName}.`),
+    t(lang, `Estado actual: ${file.status}.`, `Kunan kaynin: ${file.status}.`),
+    t(lang, `Oficina actual: ${file.office}.`, `Kunan oficina: ${file.office}.`),
+    t(lang, `Último movimiento: ${file.lastMovement}.`, `Qhipa kuyuy: ${file.lastMovement}.`),
+    file.observation
+      ? t(lang, `Observación: ${file.observation}.`, `Qhawarisqa: ${file.observation}.`)
+      : "",
+    t(lang, "Datos simulados para demostración.", "Demo hinalla willakuykuna."),
   ]
     .filter(Boolean)
     .join(" ");
@@ -290,34 +346,27 @@ function notificationSpoken(file: SimFile, lang: Language): string {
 function inlineCardToSpoken(card: InlineCard, lang: Language): string {
   switch (card.kind) {
     case "requirements":
-      return procedureRequirementsSpoken(card.procedure);
-
+      return procedureRequirementsSpoken(card.procedure, lang);
     case "summary":
       return finalSummarySpoken(card.data, card.proc, lang);
-
     case "receipt":
       return receiptSpoken(card.fileNumber, card.proc, card.data, lang);
-
     case "file-status":
       return fileStatusSpoken(card.file, lang);
-
     case "file-list":
       return fileListSpoken(card.files, lang);
-
     case "notification":
       return notificationSpoken(card.file, lang);
-
     default:
       return "";
   }
 }
 
-// ---------- Step definitions ----------
 type StepBuild = (s: AgentState) => Turn;
 
 export function buildTurnFor(state: AgentState, step: Step): Turn {
   const b = STEP_BUILDERS[step];
-  return b ? b(state) : nawi(state, "Continuemos.", []);
+  return b ? b(state) : nawi(state, ts(state, "Continuemos.", "Qatisun."), []);
 }
 
 function nawi(
@@ -329,14 +378,15 @@ function nawi(
   const { spoken: customSpoken, ...restExtras } = extras;
 
   const cardSpoken = restExtras.card ? inlineCardToSpoken(restExtras.card, state.language) : "";
-
   const fullSpokenText = [text, cardSpoken].filter((part) => part.trim().length > 0).join(" ");
 
   return {
     id: id(),
     from: "nawi",
     text,
-    spoken: customSpoken ?? buildSpokenPrompt(state.channel, fullSpokenText, options),
+    spoken:
+      customSpoken ??
+      buildSpokenPrompt(state.channel, fullSpokenText, options, "options", state.language),
     options,
     at: now(),
     ...restExtras,
@@ -366,71 +416,163 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
   welcome: (s) =>
     nawi(
       s,
-      s.language === "qu"
-        ? "Allin hamusqayki. Soy Ñawi, asistente digital accesible del Gobierno Regional de Cusco. Esta es una demo. Ahora elige si quieres usar Ñawi con guía de voz o sin guía de voz."
-        : "Hola, soy Ñawi, tu asistente digital accesible del Gobierno Regional de Cusco. Esta es una demo accesible. Ahora elige si quieres usar Ñawi con guía de voz o sin guía de voz.",
+      ts(
+        s,
+        "Hola, soy Ñawi, tu asistente digital accesible del Gobierno Regional de Cusco. Esta es una demo accesible. Ahora elige si quieres usar Ñawi con guía de voz o sin guía de voz.",
+        "Allin hamusqayki. Ñawi kani, Gobierno Regional de Cusco nisqapa yanapaq digitalnin. Kayqa demo accesiblemi. Kunan akllay, Ñawita rimaywan llamk'achiyta munankichu icha mana.",
+      ),
       [
         {
           id: "voice",
-          label:
-            s.language === "qu" ? "Usar Ñawi con voz" : "Iniciar Ñawi con voz y permitir micrófono",
-          synonyms: ["voz", "con voz", "microfono", "micrófono", "opcion uno", "opción uno", "uno"],
+          label: ts(s, "Iniciar Ñawi con voz y permitir micrófono", "Ñawita rimaywan qallariy"),
+          synonyms: [
+            "voz",
+            "con voz",
+            "microfono",
+            "micrófono",
+            "rimay",
+            "opcion uno",
+            "opción uno",
+            "uno",
+          ],
           tone: "primary",
         },
         {
           id: "novoice",
-          label: s.language === "qu" ? "Usar sin voz" : "Usar sin guía de voz",
-          synonyms: ["sin voz", "sin guia", "sin guía", "opcion dos", "opción dos", "dos"],
+          label: ts(s, "Usar sin guía de voz", "Rimay yanapaywan mana"),
+          synonyms: [
+            "sin voz",
+            "sin guia",
+            "sin guía",
+            "mana rimay",
+            "opcion dos",
+            "opción dos",
+            "dos",
+          ],
         },
       ],
     ),
 
   menu: (s) =>
-    nawi(s, "Estoy aquí para ayudarte. ¿Qué deseas hacer hoy?", [
-      { id: "req", label: "Consultar requisitos", synonyms: ["requisitos"] },
-      { id: "start", label: "Iniciar trámite", synonyms: ["iniciar"] },
-      { id: "status", label: "Ver estado de mi trámite", synonyms: ["estado", "ver estado"] },
-      { id: "human", label: "Hablar con una persona", synonyms: ["persona", "humano"] },
-    ]),
+    nawi(
+      s,
+      ts(
+        s,
+        "Estoy aquí para ayudarte. ¿Qué deseas hacer hoy?",
+        "Yanapanaypaq kaypi kani. Kunan imata ruwanayta munanki?",
+      ),
+      [
+        {
+          id: "req",
+          label: ts(s, "Consultar requisitos", "Munasqakunata tapuy"),
+          synonyms: ["requisitos", "munasqakuna"],
+        },
+        {
+          id: "start",
+          label: ts(s, "Iniciar trámite", "Rurayta qallariy"),
+          synonyms: ["iniciar", "qallariy"],
+        },
+        {
+          id: "status",
+          label: ts(s, "Ver estado de mi trámite", "Rurayniypa kayninta qhaway"),
+          synonyms: ["estado", "ver estado", "kaynin", "qhaway"],
+        },
+        {
+          id: "human",
+          label: ts(s, "Hablar con una persona", "Runawan rimay"),
+          synonyms: ["persona", "humano", "runa"],
+        },
+      ],
+    ),
 
   "req-ask": (s) =>
     nawi(
       s,
-      "Dime qué necesitas hacer, aunque no sepas el nombre exacto del trámite. Por ejemplo: necesito una constancia, quiero presentar un documento, o quiero hacer una solicitud.",
+      ts(
+        s,
+        "Dime qué necesitas hacer, aunque no sepas el nombre exacto del trámite. Por ejemplo: necesito una constancia, quiero presentar un documento, o quiero hacer una solicitud.",
+        "Imata ruwanayta munasqaykita niway, ruraypa sutinta mana yachaspa hinapas. Kay hina niwaq: constanciata munani, qillqata haywayta munani, utaq solicitudta ruwani.",
+      ),
       [
-        { id: "no-se", label: "No sé el nombre del trámite", synonyms: ["no se"] },
-        { id: "menu", label: "Volver al menú" },
+        {
+          id: "no-se",
+          label: ts(s, "No sé el nombre del trámite", "Ruraypa sutinta manam yachanichu"),
+          synonyms: ["no se", "mana yachanichu"],
+        },
+        { id: "menu", label: ts(s, "Volver al menú", "Menuman kutiy") },
       ],
     ),
 
   "req-category": (s) =>
-    nawi(s, "No hay problema. Te ayudaré a encontrarlo. ¿Cuál se parece más a lo que necesitas?", [
-      { id: "constancia", label: "Necesito una constancia" },
-      { id: "documento", label: "Quiero presentar un documento" },
-      { id: "expediente", label: "Quiero consultar un expediente" },
-      { id: "solicitud", label: "Quiero hacer una solicitud general" },
-      { id: "ninguna", label: "Ninguna de estas" },
-    ]),
+    nawi(
+      s,
+      ts(
+        s,
+        "No hay problema. Te ayudaré a encontrarlo. ¿Cuál se parece más a lo que necesitas?",
+        "Ama llakikuychu. Tarinaykipaq yanapasqayki. Kaykunamanta mayqinqa aswan rikch'akun?",
+      ),
+      [
+        { id: "constancia", label: ts(s, "Necesito una constancia", "Constanciata munani") },
+        {
+          id: "documento",
+          label: ts(s, "Quiero presentar un documento", "Qillqata haywayta munani"),
+        },
+        {
+          id: "expediente",
+          label: ts(s, "Quiero consultar un expediente", "Expedienteta tapuyta munani"),
+        },
+        {
+          id: "solicitud",
+          label: ts(s, "Quiero hacer una solicitud general", "Solicitud generalta ruwani"),
+        },
+        { id: "ninguna", label: ts(s, "Ninguna de estas", "Manam kaykunachu") },
+      ],
+    ),
 
   "req-suggest": (s) => {
     const cat = (s.collected as any).category as Procedure["category"] | undefined;
     const matches = cat ? PROCEDURES.filter((p) => p.category === cat) : PROCEDURES;
 
-    return nawi(s, "Encontré estas opciones parecidas. Elige una para ver los requisitos.", [
-      ...matches.map((p) => ({ id: p.id, label: p.name, synonyms: [p.name.toLowerCase()] })),
-      { id: "ninguna", label: "Ninguna de estas" },
-    ]);
+    return nawi(
+      s,
+      ts(
+        s,
+        "Encontré estas opciones parecidas. Elige una para ver los requisitos.",
+        "Kay rikch'aq ruraykunata tarirqani. Hukninta akllay, munasqakunata qhawanaykipaq.",
+      ),
+      [
+        ...matches.map((p) => ({ id: p.id, label: p.name, synonyms: [p.name.toLowerCase()] })),
+        { id: "ninguna", label: ts(s, "Ninguna de estas", "Manam kaykunachu") },
+      ],
+    );
   },
 
   "req-confirm-proc": (s) => {
     const p = PROCEDURES.find((x) => x.id === s.collected.procedureId)!;
 
-    return nawi(s, `Entendí que quieres consultar: ${p.name}. ¿Es correcto?`, [
-      { id: "yes", label: "Sí, ver requisitos", tone: "primary" },
-      { id: "other", label: "No, elegir otro trámite" },
-      { id: "back", label: "Volver atrás" },
-      { id: "menu", label: "Volver al menú" },
-    ]);
+    return nawi(
+      s,
+      ts(
+        s,
+        `Entendí que quieres consultar: ${p.name}. ¿Es correcto?`,
+        `Kayta tapuyta munanki nispa hamut'arqani: ${p.name}. Chaychu?`,
+      ),
+      [
+        {
+          id: "yes",
+          label: ts(s, "Sí, ver requisitos", "Arí, munasqakunata qhaway"),
+          synonyms: ["si", "sí", "ari", "arí"],
+          tone: "primary",
+        },
+        {
+          id: "other",
+          label: ts(s, "No, elegir otro trámite", "Mana, huk rurayta akllay"),
+          synonyms: ["no", "mana"],
+        },
+        { id: "back", label: ts(s, "Volver atrás", "Qhipaman kutiy") },
+        { id: "menu", label: ts(s, "Volver al menú", "Menuman kutiy") },
+      ],
+    );
   },
 
   "req-result": (s) => {
@@ -438,12 +580,20 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
 
     return nawi(
       s,
-      `Encontré el trámite: ${p.name}. Esta información es pública y no requiere validar identidad. ¿Qué quieres hacer ahora?`,
+      ts(
+        s,
+        `Encontré el trámite: ${p.name}. Esta información es pública y no requiere validar identidad. ¿Qué quieres hacer ahora?`,
+        `Kay rurayta tarirqani: ${p.name}. Kay willakuyqa llaqta willakuymi, identidadta chiqaqchayta mana munanchu. Kunan imata ruwanayta munanki?`,
+      ),
       [
-        { id: "start", label: "Iniciar este trámite", tone: "primary" },
-        { id: "other", label: "Consultar otro trámite" },
-        { id: "menu", label: "Volver al menú" },
-        { id: "human", label: "Hablar con una persona" },
+        {
+          id: "start",
+          label: ts(s, "Iniciar este trámite", "Kay rurayta qallariy"),
+          tone: "primary",
+        },
+        { id: "other", label: ts(s, "Consultar otro trámite", "Huk rurayta tapuy") },
+        { id: "menu", label: ts(s, "Volver al menú", "Menuman kutiy") },
+        { id: "human", label: ts(s, "Hablar con una persona", "Runawan rimay") },
       ],
       {
         card: { kind: "requirements", procedure: p },
@@ -455,59 +605,120 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
   "start-explain": (s) =>
     nawi(
       s,
-      "Para iniciar un trámite a tu nombre, primero debo proteger tus datos y validar tu identidad. Te guiaré paso a paso.",
+      ts(
+        s,
+        "Para iniciar un trámite a tu nombre, primero debo proteger tus datos y validar tu identidad. Te guiaré paso a paso.",
+        "Sutiykipi rurayta qallarinapaq, ñawpaqta willakuykikunata waqaychanaymi, hinaspa identidadniykita chiqaqchanaymi. Sapa kutillata yanapasqayki.",
+      ),
       [
-        { id: "ok", label: "Continuar", tone: "primary" },
-        { id: "back", label: "Volver al menú" },
+        { id: "ok", label: ts(s, "Continuar", "Qatiy"), tone: "primary" },
+        { id: "back", label: ts(s, "Volver al menú", "Menuman kutiy") },
       ],
     ),
 
   privacy: (s) =>
     nawi(
       s,
-      "Aviso de privacidad. Para ayudarte con tu trámite, usaré tu nombre, DNI y, si corresponde, número de expediente. Solo se usarán para esta atención simulada. ¿Aceptas continuar?",
+      ts(
+        s,
+        "Aviso de privacidad. Para ayudarte con tu trámite, usaré tu nombre, DNI y, si corresponde, número de expediente. Solo se usarán para esta atención simulada. ¿Aceptas continuar?",
+        "Privacidad willakuy. Yanapanaypaq sutiykita, DNIykita, hinallataq expediente yupayta llamk'achisaq. Kay demo atencionllapaqmi kanqa. Qatiyta chaskinkichu?",
+      ),
       [
-        { id: "accept", label: "Sí, acepto", tone: "primary" },
-        { id: "reject", label: "No acepto", tone: "danger" },
-        { id: "repeat", label: "Repetir aviso" },
-        { id: "back", label: "Volver atrás" },
+        {
+          id: "accept",
+          label: ts(s, "Sí, acepto", "Arí, chaskini"),
+          synonyms: ["si", "sí", "ari", "arí"],
+          tone: "primary",
+        },
+        {
+          id: "reject",
+          label: ts(s, "No acepto", "Mana chaskinichu"),
+          synonyms: ["no", "mana"],
+          tone: "danger",
+        },
+        { id: "repeat", label: ts(s, "Repetir aviso", "Willakuyta hukmanta niy") },
+        { id: "back", label: ts(s, "Volver atrás", "Qhipaman kutiy") },
       ],
     ),
 
   "ask-name": (s) => ({
     id: id(),
     from: "nawi",
-    text: "Dime tus nombres y apellidos completos.",
+    text: ts(
+      s,
+      "Dime tus nombres y apellidos completos.",
+      "Hunt'a sutiykita, tayta mamaykipa sutiyuq ima, niway.",
+    ),
     spoken:
-      s.channel === "web"
-        ? "Dime tus nombres y apellidos completos. Puedes hablar, escribir o usar el teclado. Ahora puedes hablar."
-        : "Dime tus nombres y apellidos completos. Puedes responder escribiendo o enviando una nota de voz.",
+      s.language === "qu"
+        ? s.channel === "web"
+          ? "Hunt'a sutiykita, tayta mamaykipa sutiyuq ima, niway. Rimayta, qillqayta utaq teclado llamk'achiyta atinki. Kunan rimayta atinki."
+          : "Hunt'a sutiykita niway. Qillqaspa utaq voz nota apachispa kutichiyta atinki."
+        : s.channel === "web"
+          ? "Dime tus nombres y apellidos completos. Puedes hablar, escribir o usar el teclado. Ahora puedes hablar."
+          : "Dime tus nombres y apellidos completos. Puedes responder escribiendo o enviando una nota de voz.",
     options: [
-      { id: "demo", label: `Usar dato demo: ${DEMO_CITIZEN.fullName}` },
-      { id: "cancel", label: "Cancelar", tone: "danger" },
+      {
+        id: "demo",
+        label: ts(
+          s,
+          `Usar dato demo: ${DEMO_CITIZEN.fullName}`,
+          `Demo willakuyta llamk'achiy: ${DEMO_CITIZEN.fullName}`,
+        ),
+      },
+      { id: "cancel", label: ts(s, "Cancelar", "Saqiy"), tone: "danger" },
     ],
     at: now(),
   }),
 
   "confirm-name": (s) =>
-    nawi(s, `Entendí: ${s.collected.fullName}. ¿Es correcto?`, [
-      { id: "yes", label: "Sí, es correcto", tone: "primary" },
-      { id: "no", label: "No, corregir nombre" },
-      { id: "repeat", label: "Repetir dato" },
-      { id: "cancel", label: "Cancelar", tone: "danger" },
-    ]),
+    nawi(
+      s,
+      ts(
+        s,
+        `Entendí: ${s.collected.fullName}. ¿Es correcto?`,
+        `Kayta hamut'arqani: ${s.collected.fullName}. Allinchu?`,
+      ),
+      [
+        {
+          id: "yes",
+          label: ts(s, "Sí, es correcto", "Arí, allinmi"),
+          synonyms: ["si", "sí", "ari", "arí"],
+          tone: "primary",
+        },
+        {
+          id: "no",
+          label: ts(s, "No, corregir nombre", "Mana, sutita allinchay"),
+          synonyms: ["no", "mana"],
+        },
+        { id: "repeat", label: ts(s, "Repetir dato", "Willakuyta hukmanta niy") },
+        { id: "cancel", label: ts(s, "Cancelar", "Saqiy"), tone: "danger" },
+      ],
+    ),
 
   "ask-dni": (s) => ({
     id: id(),
     from: "nawi",
-    text: "Ahora dime tu DNI de ocho dígitos.",
+    text: ts(s, "Ahora dime tu DNI de ocho dígitos.", "Kunan pusaq yupayniyuq DNIykita niway."),
     spoken:
-      s.channel === "web"
-        ? "Ahora dime tu DNI de ocho dígitos. Ahora puedes hablar."
-        : "Ahora dime tu DNI de ocho dígitos. Puedes responder escribiendo o enviando una nota de voz.",
+      s.language === "qu"
+        ? s.channel === "web"
+          ? "Kunan pusaq yupayniyuq DNIykita niway. Kunan rimayta atinki."
+          : "Kunan pusaq yupayniyuq DNIykita niway. Qillqaspa utaq voz nota apachispa kutichiyta atinki."
+        : s.channel === "web"
+          ? "Ahora dime tu DNI de ocho dígitos. Ahora puedes hablar."
+          : "Ahora dime tu DNI de ocho dígitos. Puedes responder escribiendo o enviando una nota de voz.",
     options: [
-      { id: "demo", label: `Usar DNI demo: ${DEMO_CITIZEN.dni}` },
-      { id: "cancel", label: "Cancelar", tone: "danger" },
+      {
+        id: "demo",
+        label: ts(
+          s,
+          `Usar DNI demo: ${DEMO_CITIZEN.dni}`,
+          `Demo DNI-ta llamk'achiy: ${DEMO_CITIZEN.dni}`,
+        ),
+      },
+      { id: "cancel", label: ts(s, "Cancelar", "Saqiy"), tone: "danger" },
     ],
     at: now(),
   }),
@@ -515,78 +726,162 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
   "confirm-dni": (s) =>
     nawi(
       s,
-      `Entendí el DNI: ${s.collected.dni}. Te lo repito dígito por dígito: ${digitByDigit(
-        s.collected.dni ?? "",
-        s.language,
-      )}. ¿Es correcto?`,
+      ts(
+        s,
+        `Entendí el DNI: ${s.collected.dni}. Te lo repito dígito por dígito: ${digitByDigit(
+          s.collected.dni ?? "",
+          s.language,
+        )}. ¿Es correcto?`,
+        `DNIykita hamut'arqani: ${s.collected.dni}. Huk yupaymanta huk yupaykama kutichisqayki: ${digitByDigit(
+          s.collected.dni ?? "",
+          s.language,
+        )}. Allinchu?`,
+      ),
       [
-        { id: "yes", label: "Sí, es correcto", tone: "primary" },
-        { id: "no", label: "No, corregir DNI" },
-        { id: "repeat", label: "Repetir DNI" },
-        { id: "cancel", label: "Cancelar", tone: "danger" },
+        {
+          id: "yes",
+          label: ts(s, "Sí, es correcto", "Arí, allinmi"),
+          synonyms: ["si", "sí", "ari", "arí"],
+          tone: "primary",
+        },
+        {
+          id: "no",
+          label: ts(s, "No, corregir DNI", "Mana, DNI-ta allinchay"),
+          synonyms: ["no", "mana"],
+        },
+        { id: "repeat", label: ts(s, "Repetir DNI", "DNI-ta hukmanta niy") },
+        { id: "cancel", label: ts(s, "Cancelar", "Saqiy"), tone: "danger" },
       ],
     ),
 
   "identity-summary": (s) =>
     nawi(
       s,
-      `Entonces, la atención quedará vinculada a: ${s.collected.fullName}, con DNI ${s.collected.dni}. Para proteger tus datos, ahora validaremos tu identidad con la cámara. ¿Deseas continuar?`,
+      ts(
+        s,
+        `Entonces, la atención quedará vinculada a: ${s.collected.fullName}, con DNI ${s.collected.dni}. Para proteger tus datos, ahora validaremos tu identidad con la cámara. ¿Deseas continuar?`,
+        `Chaynaqa kay atencionqa kay runaman watasqa kanqa: ${s.collected.fullName}, DNI ${s.collected.dni}. Willakuykikunata waqaychanapaq, kunan identidadniykita camarawan chiqaqchasun. Qatiyta munankichu?`,
+      ),
       [
-        { id: "yes", label: "Sí, validar identidad", tone: "primary" },
-        { id: "fix-name", label: "Corregir nombre" },
-        { id: "fix-dni", label: "Corregir DNI" },
-        { id: "cancel", label: "Cancelar", tone: "danger" },
+        {
+          id: "yes",
+          label: ts(s, "Sí, validar identidad", "Arí, identidadta chiqaqchay"),
+          synonyms: ["si", "sí", "ari", "arí"],
+          tone: "primary",
+        },
+        { id: "fix-name", label: ts(s, "Corregir nombre", "Sutita allinchay") },
+        { id: "fix-dni", label: ts(s, "Corregir DNI", "DNI-ta allinchay") },
+        { id: "cancel", label: ts(s, "Cancelar", "Saqiy"), tone: "danger" },
       ],
     ),
 
   "facial-consent": (s) =>
     nawi(
       s,
-      "Validación facial simulada para demostración. Este prototipo no compara tu rostro con RENIEC ni con una base oficial. No se guardarán imágenes ni datos biométricos reales. ¿Aceptas continuar?",
+      ts(
+        s,
+        "Validación facial simulada para demostración. Este prototipo no compara tu rostro con RENIEC ni con una base oficial. No se guardarán imágenes ni datos biométricos reales. ¿Aceptas continuar?",
+        "Demo hina uya chiqaqchay. Kay prototipoqa manam uyaykita RENIEC nisqawan nitaq base oficial nisqawan tupachinchu. Manam rikch'aykunata nitaq datos biométricos reales nisqata waqaychanqachu. Qatiyta chaskinkichu?",
+      ),
       [
-        { id: "yes", label: "Sí, validar identidad", tone: "primary" },
-        { id: "nocam", label: "No puedo usar cámara" },
-        { id: "no", label: "No acepto", tone: "danger" },
-        { id: "back", label: "Volver atrás" },
+        {
+          id: "yes",
+          label: ts(s, "Sí, validar identidad", "Arí, identidadta chiqaqchay"),
+          synonyms: ["si", "sí", "ari", "arí"],
+          tone: "primary",
+        },
+        {
+          id: "nocam",
+          label: ts(s, "No puedo usar cámara", "Manam camarata llamk'achiyta atinichu"),
+        },
+        {
+          id: "no",
+          label: ts(s, "No acepto", "Mana chaskinichu"),
+          synonyms: ["no", "mana"],
+          tone: "danger",
+        },
+        { id: "back", label: ts(s, "Volver atrás", "Qhipaman kutiy") },
       ],
     ),
 
-  "facial-module": (s) => nawi(s, "Abriendo módulo de validación facial simulado…", []),
+  "facial-module": (s) =>
+    nawi(
+      s,
+      ts(
+        s,
+        "Abriendo módulo de validación facial simulado…",
+        "Demo hina uya chiqaqchay módulo kichakuchkan...",
+      ),
+      [],
+    ),
 
   "facial-result": (s) =>
-    nawi(s, "Identidad validada para esta demo.", [
-      { id: "continue", label: "Continuar", tone: "primary" },
-    ]),
+    nawi(
+      s,
+      ts(s, "Identidad validada para esta demo.", "Identidadniyki kay demopaq chiqaqchasqañam."),
+      [{ id: "continue", label: ts(s, "Continuar", "Qatiy"), tone: "primary" }],
+    ),
 
   "facial-result-fail": (s) =>
     nawi(
       s,
-      "No se pudo validar tu identidad en esta demo. Puedes reintentar, usar otro método o hablar con una persona.",
+      ts(
+        s,
+        "No se pudo validar tu identidad en esta demo. Puedes reintentar, usar otro método o hablar con una persona.",
+        "Kay demopi identidadniykita mana chiqaqchayta atirqanichu. Hukmanta rurayta, huk ñanta llamk'achiyta, utaq runawan rimayta atinki.",
+      ),
       [
-        { id: "retry", label: "Reintentar validación", tone: "primary" },
-        { id: "back", label: "Volver atrás" },
-        { id: "menu", label: "Volver al menú" },
-        { id: "human", label: "Hablar con una persona" },
+        {
+          id: "retry",
+          label: ts(s, "Reintentar validación", "Hukmanta chiqaqchay"),
+          tone: "primary",
+        },
+        { id: "back", label: ts(s, "Volver atrás", "Qhipaman kutiy") },
+        { id: "menu", label: ts(s, "Volver al menú", "Menuman kutiy") },
+        { id: "human", label: ts(s, "Hablar con una persona", "Runawan rimay") },
       ],
     ),
 
   "facial-cancelled": (s) =>
-    nawi(s, "Validación cancelada. No se mostró ni envió información personal.", [
-      { id: "retry", label: "Reintentar validación", tone: "primary" },
-      { id: "menu", label: "Volver al menú" },
-      { id: "human", label: "Hablar con una persona" },
-    ]),
+    nawi(
+      s,
+      ts(
+        s,
+        "Validación cancelada. No se mostró ni envió información personal.",
+        "Chiqaqchayqa saqisqam. Manam willakuy personal rikuchisqachu nitaq apachisqachu.",
+      ),
+      [
+        {
+          id: "retry",
+          label: ts(s, "Reintentar validación", "Hukmanta chiqaqchay"),
+          tone: "primary",
+        },
+        { id: "menu", label: ts(s, "Volver al menú", "Menuman kutiy") },
+        { id: "human", label: ts(s, "Hablar con una persona", "Runawan rimay") },
+      ],
+    ),
 
   "post-validation": (s) => {
     if (s.flowOrigin === "status") {
       return nawi(
         s,
-        `Identidad validada para esta demo. Buscaré trámites vinculados a ${s.confirmed.fullName}, DNI ${s.confirmed.dni}. ¿Tienes tu número de expediente?`,
+        ts(
+          s,
+          `Identidad validada para esta demo. Buscaré trámites vinculados a ${s.confirmed.fullName}, DNI ${s.confirmed.dni}. ¿Tienes tu número de expediente?`,
+          `Identidadniyki kay demopaq chiqaqchasqañam. ${s.confirmed.fullName}, DNI ${s.confirmed.dni}, payman watasqa ruraykunata maskasaq. Expediente yupayniyki kanchu?`,
+        ),
         [
-          { id: "have", label: "Sí, dictar expediente" },
-          { id: "no-have", label: "No lo tengo, buscar mis trámites vinculados" },
-          { id: "menu", label: "Volver al menú" },
-          { id: "human", label: "Hablar con una persona" },
+          { id: "have", label: ts(s, "Sí, dictar expediente", "Arí, expediente yupayta niy") },
+          {
+            id: "no-have",
+            label: ts(
+              s,
+              "No lo tengo, buscar mis trámites vinculados",
+              "Manam kanchu, rurayniykunata maskay",
+            ),
+          },
+          { id: "menu", label: ts(s, "Volver al menú", "Menuman kutiy") },
+          { id: "human", label: ts(s, "Hablar con una persona", "Runawan rimay") },
         ],
       );
     }
@@ -598,26 +893,38 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
 
       return nawi(
         s,
-        `Identidad validada para esta demo. Continuaremos con: ${p.name}, a nombre de ${s.confirmed.fullName}, DNI ${s.confirmed.dni}. ¿Es correcto?`,
+        ts(
+          s,
+          `Identidad validada para esta demo. Continuaremos con: ${p.name}, a nombre de ${s.confirmed.fullName}, DNI ${s.confirmed.dni}. ¿Es correcto?`,
+          `Identidadniyki kay demopaq chiqaqchasqañam. Kay ruraywan qatisun: ${p.name}, ${s.confirmed.fullName} sutipi, DNI ${s.confirmed.dni}. Allinchu?`,
+        ),
         [
-          { id: "yes", label: "Sí, continuar", tone: "primary" },
-          { id: "other", label: "No, elegir otro trámite" },
-          { id: "reqs", label: "Consultar requisitos primero" },
-          { id: "back", label: "Volver atrás" },
+          {
+            id: "yes",
+            label: ts(s, "Sí, continuar", "Arí, qatiy"),
+            synonyms: ["si", "sí", "ari", "arí"],
+            tone: "primary",
+          },
+          { id: "other", label: ts(s, "No, elegir otro trámite", "Mana, huk rurayta akllay") },
+          {
+            id: "reqs",
+            label: ts(s, "Consultar requisitos primero", "Ñawpaqta munasqakunata tapuy"),
+          },
+          { id: "back", label: ts(s, "Volver atrás", "Qhipaman kutiy") },
         ],
       );
     }
 
-    return nawi(s, "¿Qué trámite quieres iniciar?", [
+    return nawi(s, ts(s, "¿Qué trámite quieres iniciar?", "Ima rurayta qallariyta munanki?"), [
       ...PROCEDURES.map((p) => ({ id: p.id, label: p.name, synonyms: [p.name.toLowerCase()] })),
-      { id: "no-se", label: "No sé cuál necesito" },
+      { id: "no-se", label: ts(s, "No sé cuál necesito", "Mayqinta munasqayta manam yachanichu") },
     ]);
   },
 
   "choose-procedure": (s) =>
-    nawi(s, "¿Qué trámite quieres iniciar?", [
+    nawi(s, ts(s, "¿Qué trámite quieres iniciar?", "Ima rurayta qallariyta munanki?"), [
       ...PROCEDURES.map((p) => ({ id: p.id, label: p.name })),
-      { id: "no-se", label: "No sé cuál necesito" },
+      { id: "no-se", label: ts(s, "No sé cuál necesito", "Mayqinta munasqayta manam yachanichu") },
     ]),
 
   "show-requirements": (s) => {
@@ -625,12 +932,21 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
 
     return nawi(
       s,
-      `Antes de iniciar, estos son los requisitos de ${p.name}. ¿Quieres continuar con este trámite?`,
+      ts(
+        s,
+        `Antes de iniciar, estos son los requisitos de ${p.name}. ¿Quieres continuar con este trámite?`,
+        `${p.name} rurayta qallarinapaq kay munasqakunam kachkan. Kay ruraywan qatiyta munankichu?`,
+      ),
       [
-        { id: "yes", label: "Sí, continuar", tone: "primary" },
-        { id: "other", label: "Consultar otro trámite" },
-        { id: "back", label: "Volver atrás" },
-        { id: "cancel", label: "Cancelar", tone: "danger" },
+        {
+          id: "yes",
+          label: ts(s, "Sí, continuar", "Arí, qatiy"),
+          synonyms: ["si", "sí", "ari", "arí"],
+          tone: "primary",
+        },
+        { id: "other", label: ts(s, "Consultar otro trámite", "Huk rurayta tapuy") },
+        { id: "back", label: ts(s, "Volver atrás", "Qhipaman kutiy") },
+        { id: "cancel", label: ts(s, "Cancelar", "Saqiy"), tone: "danger" },
       ],
       {
         card: { kind: "requirements", procedure: p },
@@ -641,35 +957,69 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
   "ask-motivo": (s) => ({
     id: id(),
     from: "nawi",
-    text: "Cuéntame brevemente el motivo de tu solicitud.",
+    text: ts(
+      s,
+      "Cuéntame brevemente el motivo de tu solicitud.",
+      "Mañakuyki imarayku kasqanta pisillata willaway.",
+    ),
     spoken:
-      s.channel === "web"
-        ? "Cuéntame brevemente el motivo de tu solicitud. Ahora puedes hablar."
-        : "Cuéntame brevemente el motivo de tu solicitud. Puedes responder por texto o enviando una nota de voz.",
+      s.language === "qu"
+        ? s.channel === "web"
+          ? "Mañakuyki imarayku kasqanta pisillata willaway. Kunan rimayta atinki."
+          : "Mañakuyki imarayku kasqanta pisillata willaway. Qillqaspa utaq voz nota apachispa kutichiyta atinki."
+        : s.channel === "web"
+          ? "Cuéntame brevemente el motivo de tu solicitud. Ahora puedes hablar."
+          : "Cuéntame brevemente el motivo de tu solicitud. Puedes responder por texto o enviando una nota de voz.",
     options: [
-      { id: "demo", label: "Usar motivo demo" },
-      { id: "skip", label: "Sin motivo específico" },
+      { id: "demo", label: ts(s, "Usar motivo demo", "Demo imaraykuta llamk'achiy") },
+      { id: "skip", label: ts(s, "Sin motivo específico", "Mana sut'i imaraykuyuq") },
     ],
     at: now(),
   }),
 
   "ask-attachment": (s) =>
-    nawi(s, "¿Deseas adjuntar un documento simulado a este trámite?", [
-      { id: "yes", label: "Sí, adjuntar (simulado)", tone: "primary" },
-      { id: "no", label: "No adjuntar" },
-    ]),
+    nawi(
+      s,
+      ts(
+        s,
+        "¿Deseas adjuntar un documento simulado a este trámite?",
+        "Kay rurayman huk demo qillqata yapayta munankichu?",
+      ),
+      [
+        {
+          id: "yes",
+          label: ts(s, "Sí, adjuntar (simulado)", "Arí, qillqata yapay demo hina"),
+          synonyms: ["si", "sí", "ari", "arí"],
+          tone: "primary",
+        },
+        {
+          id: "no",
+          label: ts(s, "No adjuntar", "Ama qillqata yapaychu"),
+          synonyms: ["no", "mana"],
+        },
+      ],
+    ),
 
   "final-summary": (s) => {
     const p = PROCEDURES.find((x) => x.id === s.collected.procedureId)!;
 
     return nawi(
       s,
-      "Antes de enviar, voy a revisar tus datos. ¿Está todo correcto?",
+      ts(
+        s,
+        "Antes de enviar, voy a revisar tus datos. ¿Está todo correcto?",
+        "Manaraq apachispa, willakuykikunata qhawasaq. Llapan allinchu?",
+      ),
       [
-        { id: "send", label: "Sí, enviar", tone: "primary" },
-        { id: "fix", label: "Corregir un dato" },
-        { id: "repeat", label: "Repetir resumen" },
-        { id: "cancel", label: "Cancelar", tone: "danger" },
+        {
+          id: "send",
+          label: ts(s, "Sí, enviar", "Arí, apachiy"),
+          synonyms: ["si", "sí", "ari", "arí"],
+          tone: "primary",
+        },
+        { id: "fix", label: ts(s, "Corregir un dato", "Huk willakuyta allinchay") },
+        { id: "repeat", label: ts(s, "Repetir resumen", "Pisiyachisqa willakuyta hukmanta niy") },
+        { id: "cancel", label: ts(s, "Cancelar", "Saqiy"), tone: "danger" },
       ],
       {
         card: { kind: "summary", data: s.confirmed, proc: p },
@@ -684,12 +1034,20 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
 
     return nawi(
       s,
-      `Listo. Tu solicitud fue registrada en esta demo. Tu número de expediente simulado es: ${fileNumber}. Guarda este número para consultar el estado de tu trámite.`,
+      ts(
+        s,
+        `Listo. Tu solicitud fue registrada en esta demo. Tu número de expediente simulado es: ${fileNumber}. Guarda este número para consultar el estado de tu trámite.`,
+        `Listo. Mañakuyki kay demopi registrasqañam. Expediente yupay simuladoqa ${fileNumberForVoice(fileNumber, s.language)}. Kay yupayta waqaychay, rurayniykipa kayninta tapunaykipaq.`,
+      ),
       [
-        { id: "status", label: "Ver estado ahora", tone: "primary" },
-        { id: "copy", label: "Copiar número de expediente" },
-        { id: "menu", label: "Volver al menú" },
-        { id: "human", label: "Hablar con una persona" },
+        {
+          id: "status",
+          label: ts(s, "Ver estado ahora", "Kunan kayninta qhaway"),
+          tone: "primary",
+        },
+        { id: "copy", label: ts(s, "Copiar número de expediente", "Expediente yupayta copiay") },
+        { id: "menu", label: ts(s, "Volver al menú", "Menuman kutiy") },
+        { id: "human", label: ts(s, "Hablar con una persona", "Runawan rimay") },
       ],
       {
         card: { kind: "receipt", fileNumber, proc: p, data: s.confirmed },
@@ -701,81 +1059,136 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
   "status-explain": (s) =>
     nawi(
       s,
-      "Para mostrar el estado de un trámite necesito validar tu identidad, porque esta información puede ser personal.",
+      ts(
+        s,
+        "Para mostrar el estado de un trámite necesito validar tu identidad, porque esta información puede ser personal.",
+        "Huk ruraypa kayninta rikuchinaypaq identidadniykita chiqaqchanaymi, kay willakuyqa personal kanman.",
+      ),
       [
-        { id: "ok", label: "Continuar", tone: "primary" },
-        { id: "menu", label: "Volver al menú" },
+        { id: "ok", label: ts(s, "Continuar", "Qatiy"), tone: "primary" },
+        { id: "menu", label: ts(s, "Volver al menú", "Menuman kutiy") },
       ],
     ),
 
   "status-have-file": (s) =>
-    nawi(s, "¿Tienes tu número de expediente?", [
-      { id: "have", label: "Sí, dictar expediente" },
-      { id: "no-have", label: "No lo tengo, buscar mis trámites" },
-      { id: "menu", label: "Volver al menú" },
-      { id: "human", label: "Hablar con una persona" },
+    nawi(s, ts(s, "¿Tienes tu número de expediente?", "Expediente yupayniyki kanchu?"), [
+      { id: "have", label: ts(s, "Sí, dictar expediente", "Arí, expediente yupayta niy") },
+      {
+        id: "no-have",
+        label: ts(s, "No lo tengo, buscar mis trámites", "Manam kanchu, rurayniykunata maskay"),
+      },
+      { id: "menu", label: ts(s, "Volver al menú", "Menuman kutiy") },
+      { id: "human", label: ts(s, "Hablar con una persona", "Runawan rimay") },
     ]),
 
   "status-ask-file": (s) => ({
     id: id(),
     from: "nawi",
-    text: "Dime tu número de expediente. Formato: EXP guión cuatro dígitos guión año.",
+    text: ts(
+      s,
+      "Dime tu número de expediente. Formato: EXP guión cuatro dígitos guión año.",
+      "Expediente yupayniykita niway. Formato: EXP guion tawa yupay guion wata.",
+    ),
     spoken:
-      s.channel === "web"
-        ? "Dime tu número de expediente. Ahora puedes hablar."
-        : "Dime tu número de expediente. Puedes responder por texto o nota de voz.",
+      s.language === "qu"
+        ? s.channel === "web"
+          ? "Expediente yupayniykita niway. Kunan rimayta atinki."
+          : "Expediente yupayniykita niway. Qillqaspa utaq voz nota apachispa kutichiyta atinki."
+        : s.channel === "web"
+          ? "Dime tu número de expediente. Ahora puedes hablar."
+          : "Dime tu número de expediente. Puedes responder por texto o nota de voz.",
     options: [
-      { id: "demo", label: "Usar EXP-0512-2026 (demo)" },
-      { id: "demo2", label: "Usar EXP-9999-2026 (no vinculado)" },
-      { id: "back", label: "Volver atrás" },
+      { id: "demo", label: ts(s, "Usar EXP-0512-2026 (demo)", "EXP-0512-2026 llamk'achiy demo") },
+      {
+        id: "demo2",
+        label: ts(s, "Usar EXP-9999-2026 (no vinculado)", "EXP-9999-2026 llamk'achiy mana watasqa"),
+      },
+      { id: "back", label: ts(s, "Volver atrás", "Qhipaman kutiy") },
     ],
     at: now(),
   }),
 
   "status-confirm-file": (s) =>
-    nawi(s, `Entendí el expediente: ${s.collected.fileNumber}. ¿Es correcto?`, [
-      { id: "yes", label: "Sí, consultar ese expediente", tone: "primary" },
-      { id: "no", label: "No, corregir expediente" },
-      { id: "back", label: "Volver atrás" },
-    ]),
+    nawi(
+      s,
+      ts(
+        s,
+        `Entendí el expediente: ${s.collected.fileNumber}. ¿Es correcto?`,
+        `Kay expediente yupayta hamut'arqani: ${s.collected.fileNumber}. Allinchu?`,
+      ),
+      [
+        {
+          id: "yes",
+          label: ts(s, "Sí, consultar ese expediente", "Arí, kay expedienteta tapuy"),
+          synonyms: ["si", "sí", "ari", "arí"],
+          tone: "primary",
+        },
+        {
+          id: "no",
+          label: ts(s, "No, corregir expediente", "Mana, expedienteta allinchay"),
+          synonyms: ["no", "mana"],
+        },
+        { id: "back", label: ts(s, "Volver atrás", "Qhipaman kutiy") },
+      ],
+    ),
 
   "status-show": (s) => {
     const f = SIM_FILES.find((x) => x.number === s.collected.fileNumber);
 
     if (!f) {
-      return nawi(s, "No encontré ese expediente en la demo.", [
-        { id: "retry", label: "Intentar otra vez" },
-        { id: "menu", label: "Volver al menú" },
-      ]);
+      return nawi(
+        s,
+        ts(
+          s,
+          "No encontré ese expediente en la demo.",
+          "Kay demopi chay expedienteta mana tarirqanichu.",
+        ),
+        [
+          { id: "retry", label: ts(s, "Intentar otra vez", "Hukmanta kallpachakuy") },
+          { id: "menu", label: ts(s, "Volver al menú", "Menuman kutiy") },
+        ],
+      );
     }
 
     if (f.ownerDni !== s.confirmed.dni) {
       return nawi(
         s,
-        "Por privacidad, no puedo mostrar información de un expediente que no está vinculado a tu identidad validada.",
+        ts(
+          s,
+          "Por privacidad, no puedo mostrar información de un expediente que no está vinculado a tu identidad validada.",
+          "Privacidadrayku, manam rikuchiyta atinichu kay expediente willakuyta, identidadniykiman mana watasqa kaptin.",
+        ),
         [
-          { id: "other", label: "Consultar otro expediente" },
-          { id: "list", label: "Buscar mis trámites" },
-          { id: "menu", label: "Volver al menú" },
-          { id: "human", label: "Hablar con una persona" },
+          { id: "other", label: ts(s, "Consultar otro expediente", "Huk expedienteta tapuy") },
+          { id: "list", label: ts(s, "Buscar mis trámites", "Rurayniykunata maskay") },
+          { id: "menu", label: ts(s, "Volver al menú", "Menuman kutiy") },
+          { id: "human", label: ts(s, "Hablar con una persona", "Runawan rimay") },
         ],
       );
     }
 
     const opts: Option[] = [
-      { id: "last", label: "Ver último movimiento" },
-      { id: "other", label: "Consultar otro expediente" },
-      { id: "menu", label: "Volver al menú" },
-      { id: "human", label: "Hablar con una persona" },
+      { id: "last", label: ts(s, "Ver último movimiento", "Qhipa kuyuyta qhaway") },
+      { id: "other", label: ts(s, "Consultar otro expediente", "Huk expedienteta tapuy") },
+      { id: "menu", label: ts(s, "Volver al menú", "Menuman kutiy") },
+      { id: "human", label: ts(s, "Hablar con una persona", "Runawan rimay") },
     ];
 
     if (f.status === "Observado") {
-      opts.unshift({ id: "fix", label: "Corregir ahora", tone: "primary" });
+      opts.unshift({
+        id: "fix",
+        label: ts(s, "Corregir ahora", "Kunan allinchay"),
+        tone: "primary",
+      });
     }
 
     return nawi(
       s,
-      `Tu trámite ${f.procedureName}, expediente ${f.number}, está ${f.status}.`,
+      ts(
+        s,
+        `Tu trámite ${f.procedureName}, expediente ${f.number}, está ${f.status}.`,
+        `Rurayniyki ${f.procedureName}, expediente ${fileNumberForVoice(f.number, s.language)}, kayninqa ${f.status}.`,
+      ),
       opts,
       {
         card: { kind: "file-status", file: f },
@@ -789,14 +1202,18 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
 
     return nawi(
       s,
-      `Encontré ${mine.length} trámites vinculados a ${s.confirmed.fullName}. Elige uno para ver el detalle.`,
+      ts(
+        s,
+        `Encontré ${mine.length} trámites vinculados a ${s.confirmed.fullName}. Elige uno para ver el detalle.`,
+        `Kaypi ${mine.length} ruraykunata tarirqani, ${s.confirmed.fullName} sutiman watasqa. Hukninta akllay sut'inchayta qhawanaykipaq.`,
+      ),
       [
         ...mine.map((f) => ({
           id: f.number,
           label: `${f.number} — ${f.procedureName} — ${f.status}`,
         })),
-        { id: "other", label: "Consultar otro expediente" },
-        { id: "menu", label: "Volver al menú" },
+        { id: "other", label: ts(s, "Consultar otro expediente", "Huk expedienteta tapuy") },
+        { id: "menu", label: ts(s, "Volver al menú", "Menuman kutiy") },
       ],
       {
         card: { kind: "file-list", files: mine },
@@ -810,12 +1227,16 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
 
     return nawi(
       s,
-      `Tu trámite fue observado. ${f.observation ?? ""} Puedes corregirlo desde aquí.`,
+      ts(
+        s,
+        `Tu trámite fue observado. ${f.observation ?? ""} Puedes corregirlo desde aquí.`,
+        `Rurayniykiqa observado kachkan. ${f.observation ?? ""} Kaymanta allinchayta atinki.`,
+      ),
       [
-        { id: "fix", label: "Corregir ahora", tone: "primary" },
-        { id: "repeat", label: "Repetir observación" },
-        { id: "human", label: "Hablar con una persona" },
-        { id: "menu", label: "Volver al menú" },
+        { id: "fix", label: ts(s, "Corregir ahora", "Kunan allinchay"), tone: "primary" },
+        { id: "repeat", label: ts(s, "Repetir observación", "Qhawarisqata hukmanta niy") },
+        { id: "human", label: ts(s, "Hablar con una persona", "Runawan rimay") },
+        { id: "menu", label: ts(s, "Volver al menú", "Menuman kutiy") },
       ],
     );
   },
@@ -823,31 +1244,55 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
   "correct-attach": (s) =>
     nawi(
       s,
-      "Para subsanar, simula adjuntar el documento solicitado. ¿Deseas adjuntar la solicitud simple firmada?",
+      ts(
+        s,
+        "Para subsanar, simula adjuntar el documento solicitado. ¿Deseas adjuntar la solicitud simple firmada?",
+        "Allinchanapaq, mañakusqa qillqata demo hina yapay. Solicitud simple firmada nisqata yapayta munankichu?",
+      ),
       [
-        { id: "yes", label: "Sí, adjuntar (simulado)", tone: "primary" },
-        { id: "describe", label: "Describir corrección por voz" },
-        { id: "back", label: "Volver atrás" },
-        { id: "cancel", label: "Cancelar", tone: "danger" },
+        {
+          id: "yes",
+          label: ts(s, "Sí, adjuntar (simulado)", "Arí, yapay demo hina"),
+          synonyms: ["si", "sí", "ari", "arí"],
+          tone: "primary",
+        },
+        {
+          id: "describe",
+          label: ts(s, "Describir corrección por voz", "Allinchayta rimaywan willay"),
+        },
+        { id: "back", label: ts(s, "Volver atrás", "Qhipaman kutiy") },
+        { id: "cancel", label: ts(s, "Cancelar", "Saqiy"), tone: "danger" },
       ],
     ),
 
   "correct-done": (s) =>
-    nawi(s, "Subsanación registrada en esta demo.", [
-      { id: "status", label: "Ver estado actualizado", tone: "primary" },
-      { id: "menu", label: "Volver al menú" },
-      { id: "human", label: "Hablar con una persona" },
-    ]),
+    nawi(
+      s,
+      ts(s, "Subsanación registrada en esta demo.", "Subsanación kay demopi registrasqañam."),
+      [
+        {
+          id: "status",
+          label: ts(s, "Ver estado actualizado", "Musuq kayninta qhaway"),
+          tone: "primary",
+        },
+        { id: "menu", label: ts(s, "Volver al menú", "Menuman kutiy") },
+        { id: "human", label: ts(s, "Hablar con una persona", "Runawan rimay") },
+      ],
+    ),
 
   "human-support": (s) =>
     nawi(
       s,
-      "Puedo orientarte con datos de contacto de Mesa de Partes. Atención: lunes a viernes, 8:00 a.m. a 4:30 p.m. Teléfono referencial para demo: 084-000000.",
+      ts(
+        s,
+        "Puedo orientarte con datos de contacto de Mesa de Partes. Atención: lunes a viernes, 8:00 a.m. a 4:30 p.m. Teléfono referencial para demo: 084-000000.",
+        "Mesa de Partes nisqapa willakuyninwan yanapayta atini. Atencionqa lunesmanta vierneskama, pusaq pacha tutamanta tawa treinta tardekama. Demo telefonoqa cero ocho cuatro, cero cero cero cero cero cero.",
+      ),
       [
-        { id: "menu", label: "Volver al menú", tone: "primary" },
-        { id: "req", label: "Consultar requisitos" },
-        { id: "retry", label: "Reintentar validación" },
-        { id: "end", label: "Finalizar" },
+        { id: "menu", label: ts(s, "Volver al menú", "Menuman kutiy"), tone: "primary" },
+        { id: "req", label: ts(s, "Consultar requisitos", "Munasqakunata tapuy") },
+        { id: "retry", label: ts(s, "Reintentar validación", "Hukmanta chiqaqchay") },
+        { id: "end", label: ts(s, "Finalizar", "Tukuy") },
       ],
     ),
 
@@ -856,11 +1301,15 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
 
     return nawi(
       s,
-      `Novedad en tu trámite: el expediente ${f.number} tiene una actualización.`,
+      ts(
+        s,
+        `Novedad en tu trámite: el expediente ${f.number} tiene una actualización.`,
+        `Rurayniykipi musuq willakuy kachkan: expediente ${fileNumberForVoice(f.number, s.language)} huk musuq willakuyuqmi.`,
+      ),
       [
-        { id: "details", label: "Ver detalles", tone: "primary" },
-        { id: "menu", label: "Volver al menú" },
-        { id: "human", label: "Hablar con una persona" },
+        { id: "details", label: ts(s, "Ver detalles", "Sut'inchayta qhaway"), tone: "primary" },
+        { id: "menu", label: ts(s, "Volver al menú", "Menuman kutiy") },
+        { id: "human", label: ts(s, "Hablar con una persona", "Runawan rimay") },
       ],
       {
         card: { kind: "notification", file: f },
@@ -870,9 +1319,15 @@ const STEP_BUILDERS: Record<Step, StepBuild> = {
   },
 
   cancelled: (s) =>
-    nawi(s, "Proceso cancelado. No se envió nada.", [
-      { id: "menu", label: "Volver al menú", tone: "primary" },
-    ]),
+    nawi(
+      s,
+      ts(
+        s,
+        "Proceso cancelado. No se envió nada.",
+        "Procesoqa saqisqam. Manam imapas apachisqachu.",
+      ),
+      [{ id: "menu", label: ts(s, "Volver al menú", "Menuman kutiy"), tone: "primary" }],
+    ),
 };
 
 // ---------- Engine ----------
@@ -925,12 +1380,6 @@ function pushUser(state: AgentState, text: string, asVoiceNote = false): AgentSt
   };
 }
 
-function repeatLast(state: AgentState): AgentState {
-  const last = [...state.turns].reverse().find((t) => t.from === "nawi");
-  if (!last) return state;
-  return pushNawi(state, state.step);
-}
-
 function unclear(state: AgentState): AgentState {
   const next = state.unclearCount + 1;
 
@@ -939,22 +1388,44 @@ function unclear(state: AgentState): AgentState {
     from: "nawi",
     text:
       next === 1
-        ? "No logré identificar tu respuesta. Te repito la última pregunta y las opciones disponibles."
+        ? ts(
+            state,
+            "No logré identificar tu respuesta. Te repito la última pregunta y las opciones disponibles.",
+            "Manam kutichisqaykita riqsiyta atirqanichu. Qhipa tapukuyta akllanakunawan kuska hukmanta nisqayki.",
+          )
         : next === 2
-          ? "Puedes responder con el número de la opción. Por ejemplo, di ‘opción uno’ o el nombre de la opción."
-          : "Parece que esta parte no está siendo clara. ¿Qué deseas hacer?",
+          ? ts(
+              state,
+              "Puedes responder con el número de la opción. Por ejemplo, di ‘opción uno’ o el nombre de la opción.",
+              "Akllanapaq yupayta niyta atinki. Kay hina: opción uno, utaq akllanapa sutinta.",
+            )
+          : ts(
+              state,
+              "Parece que esta parte no está siendo clara. ¿Qué deseas hacer?",
+              "Kay chiqaqa manachá sut'ichu kachkan. Imata ruwanayta munanki?",
+            ),
     options:
       next >= 3
         ? [
-            { id: "retry", label: "Intentar otra vez", tone: "primary" },
-            { id: "menu", label: "Volver al menú" },
-            { id: "human", label: "Hablar con una persona" },
+            {
+              id: "retry",
+              label: ts(state, "Intentar otra vez", "Hukmanta kallpachakuy"),
+              tone: "primary",
+            },
+            { id: "menu", label: ts(state, "Volver al menú", "Menuman kutiy") },
+            { id: "human", label: ts(state, "Hablar con una persona", "Runawan rimay") },
           ]
         : state.currentOptions,
     at: now(),
   };
 
-  baseTurn.spoken = buildSpokenPrompt(state.channel, baseTurn.text, baseTurn.options ?? []);
+  baseTurn.spoken = buildSpokenPrompt(
+    state.channel,
+    baseTurn.text,
+    baseTurn.options ?? [],
+    "options",
+    state.language,
+  );
 
   return {
     ...state,
@@ -1077,7 +1548,11 @@ export function reducer(state: AgentState, action: EngineAction): AgentState {
           if (!dni) {
             const t = nawi(
               s,
-              "El DNI debe tener 8 dígitos. Puedes repetirlo o escribirlo nuevamente.",
+              ts(
+                s,
+                "El DNI debe tener 8 dígitos. Puedes repetirlo o escribirlo nuevamente.",
+                "DNIqa pusaq yupayniyuq kanan. Hukmanta niyta utaq qillqayta atinki.",
+              ),
               s.currentOptions,
             );
 
@@ -1094,7 +1569,11 @@ export function reducer(state: AgentState, action: EngineAction): AgentState {
           if (!fn) {
             const t = nawi(
               s,
-              "No reconocí el número. Formato esperado: EXP-XXXX-AAAA.",
+              ts(
+                s,
+                "No reconocí el número. Formato esperado: EXP-XXXX-AAAA.",
+                "Manam yupayta riqsirqanichu. Formatoqa kay hinam kanan: EXP-XXXX-AAAA.",
+              ),
               s.currentOptions,
             );
 
@@ -1147,11 +1626,19 @@ function goBack(state: AgentState): AgentState {
 }
 
 function askCancel(state: AgentState): AgentState {
-  const t = nawi(state, "¿Quieres cancelar este proceso? Si cancelas, no se enviará nada.", [
-    { id: "cancel-yes", label: "Sí, cancelar", tone: "danger" },
-    { id: "cancel-no", label: "No, continuar", tone: "primary" },
-    { id: "back", label: "Volver atrás" },
-  ]);
+  const t = nawi(
+    state,
+    ts(
+      state,
+      "¿Quieres cancelar este proceso? Si cancelas, no se enviará nada.",
+      "Kay procesota saqiyta munankichu? Saqispaqa manam imapas apachisqachu kanqa.",
+    ),
+    [
+      { id: "cancel-yes", label: ts(state, "Sí, cancelar", "Arí, saqiy"), tone: "danger" },
+      { id: "cancel-no", label: ts(state, "No, continuar", "Mana, qatiy"), tone: "primary" },
+      { id: "back", label: ts(state, "Volver atrás", "Qhipaman kutiy") },
+    ],
+  );
 
   return { ...state, turns: [...state.turns, t], currentOptions: t.options ?? [] };
 }
