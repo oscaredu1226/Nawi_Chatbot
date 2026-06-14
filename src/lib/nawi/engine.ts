@@ -126,7 +126,7 @@ export type AgentState = {
 const CUE_WEB = "Ahora puedes decir la opción que prefieras.";
 const CUE_WEB_SAY = "Ahora puedes hablar.";
 const CUE_WHATSAPP =
-  "Puedes responder escribiendo el número, escribiendo la opción o enviando una nota de voz.";
+  "Responde seleccionando una opción o escribiendo el número.";
 
 export function speakingCue(channel: Channel, kind: "say" | "options" = "options") {
   if (channel === "web") return kind === "say" ? CUE_WEB_SAY : CUE_WEB;
