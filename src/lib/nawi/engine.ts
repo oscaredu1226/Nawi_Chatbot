@@ -910,7 +910,11 @@ function handleSelect(state: AgentState, optionId: string): AgentState {
     return pushNawi({ ...state, history: [], flowOrigin: undefined }, "menu");
   if (optionId === "repeat") return pushNawi(state, state.step);
   if (optionId === "human") return pushNawi(state, "human-support");
-  if (optionId === "retry") return pushNawi(state, state.step);
+  if (optionId === "retry") {
+    if (state.step === "facial-result-fail" || state.step === "facial-cancelled")
+      return pushNawi(state, "facial-module");
+    return pushNawi(state, state.step);
+  }
   if (optionId === "end") return pushNawi(state, "cancelled");
 
   switch (state.step) {
