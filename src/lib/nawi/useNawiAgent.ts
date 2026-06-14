@@ -63,6 +63,14 @@ export function useNawiAgent(channel: Channel) {
     dispatch({ type: "FACIAL_RESULT", success });
   }, []);
 
+  const facialCancel = useCallback(() => {
+    dispatch({ type: "FACIAL_CANCEL" });
+  }, []);
+
+  const facialPinSuccess = useCallback(() => {
+    dispatch({ type: "FACIAL_PIN_SUCCESS" });
+  }, []);
+
   const reset = useCallback(() => {
     speech.stop();
     speech.stopListening();
@@ -82,6 +90,8 @@ export function useNawiAgent(channel: Channel) {
     select,
     submitText,
     facialResult,
+    facialCancel,
+    facialPinSuccess,
     reset,
     replay,
   };
