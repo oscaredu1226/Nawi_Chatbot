@@ -1,69 +1,164 @@
 import { useEffect, useRef, useState } from "react";
-import { Camera, X, RefreshCw, ShieldCheck, AlertTriangle, UserRound } from "lucide-react";
+import {
+  X,
+  RefreshCw,
+  ShieldCheck,
+  AlertTriangle,
+  UserRound,
+  KeyRound,
+  ArrowLeft,
+  LifeBuoy,
+  CheckCircle2,
+  XCircle,
+} from "lucide-react";
 
+// Deterministic state machine — modal never gets stuck.
 type Stage =
-  | "ready"
-  | "no-face"
-  | "face-detected"
-  | "liveness"
-  | "success"
-  | "failure";
+  | "FACE_NOTICE"        // permission / explainer
+  | "FACE_POSITIONING"   // looking for face
+  | "FACE_DETECTED"      // face inside frame
+  | "FACE_LIVENESS"      // blink/turn
+  | "FACE_SUCCESS"       // ready to confirm
+  | "FACE_FAILED"        // simulated failure recovery
+  | "FACE_CANCEL_CONFIRM" // user clicked X
+  | "FACE_PIN"           // PIN fallback
+  | "FACE_PIN_FAILED";   // wrong PIN
 
 const STAGE_LABEL: Record<Stage, string> = {
-  ready: "Cámara lista",
-  "no-face": "Buscando rostro…",
-  "face-detected": "Rostro detectado",
-  liveness: "Prueba de vida en curso",
-  success: "Identidad validada para esta demo",
-  failure: "No se pudo validar la identidad",
+  FACE_NOTICE: "Listo para iniciar",
+  FACE_POSITIONING: "Buscando rostro…",
+  FACE_DETECTED: "Rostro detectado",
+  FACE_LIVENESS: "Prueba de vida en curso",
+  FACE_SUCCESS: "Identidad validada para esta demo",
+  FACE_FAILED: "No se pudo validar la identidad",
+  FACE_CANCEL_CONFIRM: "¿Cancelar validación?",
+  FACE_PIN: "Validación por PIN simulado",
+  FACE_PIN_FAILED: "PIN incorrecto",
 };
 
 const STAGE_INSTRUCTION: Record<Stage, string> = {
-  ready: "Coloca tu rostro frente a la cámara. Ahora puedes seguir la indicación.",
-  "no-face": "Acomoda tu rostro dentro del recuadro. Ahora puedes seguir la indicación.",
-  "face-detected": "Permanece quieto unos segundos. Ahora puedes seguir la indicación.",
-  liveness: "Parpadea para completar la prueba de vida.",
-  success: "Identidad validada para esta demo.",
-  failure: "No se pudo validar tu identidad. Puedes reintentar, usar PIN o hablar con una persona.",
+  FACE_NOTICE:
+    "Validación facial simulada para demostración. No se compara con RENIEC ni se guardan datos biométricos reales.",
+  FACE_POSITIONING:
+    "Acomoda tu rostro dentro del recuadro. Permanece quieto unos segundos.",
+  FACE_DETECTED:
+    "Rostro detectado. Permanece quieto para la prueba de vida.",
+  FACE_LIVENESS: "Parpadea para completar la prueba de vida.",
+  FACE_SUCCESS: "Identidad validada para esta demo.",
+  FACE_FAILED:
+    "No se pudo validar tu identidad en esta demo. Puedes reintentar, usar PIN simulado o hablar con una persona.",
+  FACE_CANCEL_CONFIRM:
+    "Si cancelas, no podré continuar con este trámite personal.",
+  FACE_PIN:
+    "Usaremos un PIN simulado para esta demo. En una versión real, sería reemplazado por un método oficial autorizado. PIN demo: 1234.",
+  FACE_PIN_FAILED:
+    "PIN incorrecto. Por seguridad, no mostraré información personal.",
 };
 
 export function FacialValidation({
   open,
-  onResult,
-  onClose,
+  onResult,            // success / simulated facial failure
+  onCancel,            // user confirmed cancel
+  onPinSuccess,        // PIN fallback success
+  onClose,             // legacy fallback (kept for back-compat)
   citizen,
-  speak,
+  speak,               // only passed in Web flow
+  sourceChannel = "web",
 }: {
   open: boolean;
   onResult: (success: boolean) => void;
-  onClose: () => void;
+  onCancel?: () => void;
+  onPinSuccess?: () => void;
+  onClose?: () => void;
   citizen: { fullName?: string; dni?: string };
   speak?: (text: string) => void;
+  sourceChannel?: "web" | "whatsapp";
 }) {
-  const [stage, setStage] = useState<Stage>("ready");
+  const [stage, setStage] = useState<Stage>("FACE_NOTICE");
+  const [pin, setPin] = useState("");
+  const [prevStage, setPrevStage] = useState<Stage>("FACE_NOTICE");
   const timersRef = useRef<number[]>([]);
 
+  // reset whenever opened
   useEffect(() => {
     if (!open) return;
-    setStage("ready");
-    speak?.(STAGE_INSTRUCTION["ready"]);
-    const schedule = (ms: number, fn: () => void) => {
-      const id = window.setTimeout(fn, ms);
-      timersRef.current.push(id);
-    };
-    schedule(1400, () => { setStage("no-face"); speak?.(STAGE_INSTRUCTION["no-face"]); });
-    schedule(2800, () => { setStage("face-detected"); speak?.(STAGE_INSTRUCTION["face-detected"]); });
-    schedule(4200, () => { setStage("liveness"); speak?.(STAGE_INSTRUCTION["liveness"]); });
-    schedule(6000, () => { setStage("success"); speak?.(STAGE_INSTRUCTION["success"]); });
+    setStage("FACE_NOTICE");
+    setPin("");
+    setPrevStage("FACE_NOTICE");
+    // Only the Web channel speaks — WhatsApp must never trigger TTS.
+    if (sourceChannel === "web") speak?.(STAGE_INSTRUCTION.FACE_NOTICE);
     return () => {
       timersRef.current.forEach((id) => window.clearTimeout(id));
       timersRef.current = [];
     };
-  }, [open, speak]);
+  }, [open, speak, sourceChannel]);
 
   if (!open) return null;
 
-  const isDone = stage === "success" || stage === "failure";
+  const announce = (text: string) => {
+    if (sourceChannel === "web") speak?.(text);
+  };
+
+  const goTo = (s: Stage) => {
+    setPrevStage(stage);
+    setStage(s);
+    announce(STAGE_INSTRUCTION[s]);
+  };
+
+  // ---- Simulated guided progression ----
+  const startSimulation = () => {
+    setStage("FACE_POSITIONING");
+    announce(STAGE_INSTRUCTION.FACE_POSITIONING);
+  };
+  const simDetected = () => {
+    setStage("FACE_DETECTED");
+    announce(STAGE_INSTRUCTION.FACE_DETECTED);
+  };
+  const simLiveness = () => {
+    setStage("FACE_LIVENESS");
+    announce(STAGE_INSTRUCTION.FACE_LIVENESS);
+    const t = window.setTimeout(() => {
+      setStage("FACE_SUCCESS");
+      announce(STAGE_INSTRUCTION.FACE_SUCCESS);
+    }, 900);
+    timersRef.current.push(t);
+  };
+  const simInstantSuccess = () => {
+    setStage("FACE_SUCCESS");
+    announce(STAGE_INSTRUCTION.FACE_SUCCESS);
+  };
+  const simFailure = () => {
+    setStage("FACE_FAILED");
+    announce(STAGE_INSTRUCTION.FACE_FAILED);
+  };
+
+  // ---- Resolution callbacks ----
+  const confirmSuccess = () => onResult(true);
+  const reportFailureToAgent = () => onResult(false);
+  const reportCancel = () => (onCancel ? onCancel() : onClose?.());
+  const reportPinSuccess = () => (onPinSuccess ? onPinSuccess() : onResult(true));
+
+  const requestClose = () => {
+    setPrevStage(stage);
+    setStage("FACE_CANCEL_CONFIRM");
+    announce(STAGE_INSTRUCTION.FACE_CANCEL_CONFIRM);
+  };
+
+  // ---- PIN ----
+  const submitPin = () => {
+    if (pin === "1234") {
+      reportPinSuccess();
+      return;
+    }
+    setStage("FACE_PIN_FAILED");
+    announce(STAGE_INSTRUCTION.FACE_PIN_FAILED);
+  };
+
+  const showCamera = !(
+    stage === "FACE_CANCEL_CONFIRM" ||
+    stage === "FACE_PIN" ||
+    stage === "FACE_PIN_FAILED"
+  );
 
   return (
     <div
@@ -76,11 +171,13 @@ export function FacialValidation({
         <div className="nawi-gradient-header flex items-center justify-between p-4 text-primary-foreground">
           <div className="flex items-center gap-2">
             <ShieldCheck className="h-5 w-5" />
-            <h2 id="facial-title" className="text-lg font-bold">Validación facial simulada</h2>
+            <h2 id="facial-title" className="text-lg font-bold">
+              Validación facial simulada
+            </h2>
           </div>
           <button
             aria-label="Cerrar módulo de validación"
-            onClick={onClose}
+            onClick={requestClose}
             className="rounded-md p-2 hover:bg-white/10"
           >
             <X className="h-5 w-5" />
@@ -93,107 +190,329 @@ export function FacialValidation({
             No se guardarán imágenes ni datos biométricos reales.
           </p>
 
-          {/* Camera simulation */}
-          <div className="relative mt-4 aspect-[4/3] overflow-hidden rounded-xl border-2 border-foreground/30 bg-foreground">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,oklch(0.35_0.02_60)_0%,oklch(0.15_0.01_60)_70%)]" />
-            {/* Face silhouette */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div
-                className={`relative flex h-44 w-36 items-center justify-center rounded-[50%_50%_45%_45%/55%_55%_45%_45%] border-2 transition-colors duration-300 ${
-                  stage === "no-face"
-                    ? "border-warning/70"
-                    : stage === "face-detected" || stage === "liveness"
-                    ? "border-audio/80"
-                    : stage === "success"
-                    ? "border-audio"
-                    : stage === "failure"
-                    ? "border-destructive"
-                    : "border-white/40"
-                }`}
-              >
-                <UserRound
-                  className={`h-24 w-24 text-white/70 ${
-                    stage === "no-face" || stage === "ready" ? "animate-nawi-pulse" : ""
+          {showCamera && (
+            <div className="relative mt-4 aspect-[4/3] overflow-hidden rounded-xl border-2 border-foreground/30 bg-foreground">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,oklch(0.35_0.02_60)_0%,oklch(0.15_0.01_60)_70%)]" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div
+                  className={`relative flex h-44 w-36 items-center justify-center rounded-[50%_50%_45%_45%/55%_55%_45%_45%] border-2 transition-colors duration-300 ${
+                    stage === "FACE_POSITIONING"
+                      ? "border-warning/70"
+                      : stage === "FACE_DETECTED" || stage === "FACE_LIVENESS"
+                      ? "border-audio/80"
+                      : stage === "FACE_SUCCESS"
+                      ? "border-audio"
+                      : stage === "FACE_FAILED"
+                      ? "border-destructive"
+                      : "border-white/40"
                   }`}
-                  strokeWidth={1.2}
-                />
+                >
+                  <UserRound
+                    className={`h-24 w-24 text-white/70 ${
+                      stage === "FACE_POSITIONING" || stage === "FACE_NOTICE"
+                        ? "animate-nawi-pulse"
+                        : ""
+                    }`}
+                    strokeWidth={1.2}
+                  />
+                </div>
               </div>
+              {(stage === "FACE_DETECTED" || stage === "FACE_LIVENESS") && (
+                <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-audio/80 shadow-[0_0_20px_var(--color-audio)] animate-nawi-scan" />
+              )}
+              <div className="absolute left-3 top-3">
+                <span className="rounded-md bg-foreground/70 px-2.5 py-1 text-xs font-semibold text-background">
+                  {STAGE_LABEL[stage]}
+                </span>
+              </div>
+              {stage === "FACE_SUCCESS" && (
+                <div className="absolute inset-0 flex items-center justify-center bg-audio/20">
+                  <div className="rounded-full bg-audio p-4 text-background">
+                    <ShieldCheck className="h-10 w-10" />
+                  </div>
+                </div>
+              )}
+              {stage === "FACE_FAILED" && (
+                <div className="absolute inset-0 flex items-center justify-center bg-destructive/20">
+                  <div className="rounded-full bg-destructive p-4 text-background">
+                    <AlertTriangle className="h-10 w-10" />
+                  </div>
+                </div>
+              )}
             </div>
-            {/* Scanner line */}
-            {(stage === "face-detected" || stage === "liveness") && (
-              <div className="pointer-events-none absolute inset-x-6 top-0 h-px bg-audio/80 shadow-[0_0_20px_var(--color-audio)] animate-nawi-scan" />
-            )}
-            {/* Stage chip */}
-            <div className="absolute left-3 top-3">
-              <span className="rounded-md bg-foreground/70 px-2.5 py-1 text-xs font-semibold text-background">
-                {STAGE_LABEL[stage]}
-              </span>
-            </div>
-            {stage === "success" && (
-              <div className="absolute inset-0 flex items-center justify-center bg-audio/20">
-                <div className="rounded-full bg-audio p-4 text-background"><ShieldCheck className="h-10 w-10" /></div>
-              </div>
-            )}
-            {stage === "failure" && (
-              <div className="absolute inset-0 flex items-center justify-center bg-destructive/20">
-                <div className="rounded-full bg-destructive p-4 text-background"><AlertTriangle className="h-10 w-10" /></div>
-              </div>
-            )}
-          </div>
+          )}
 
-          {/* Instruction */}
-          <p className="mt-4 text-[17px] font-medium text-foreground" aria-live="polite">
+          <p
+            className="mt-4 text-[17px] font-medium text-foreground"
+            aria-live="polite"
+          >
             {STAGE_INSTRUCTION[stage]}
           </p>
 
-          {citizen.fullName && (
+          {citizen.fullName && stage !== "FACE_CANCEL_CONFIRM" && (
             <p className="mt-2 text-sm text-muted-foreground">
-              Vinculando a: <span className="font-semibold text-foreground">{citizen.fullName}</span>{" "}
+              Vinculando a:{" "}
+              <span className="font-semibold text-foreground">
+                {citizen.fullName}
+              </span>{" "}
               · DNI {citizen.dni}
             </p>
           )}
 
-          {/* Actions */}
-          <div className="mt-4 flex flex-wrap gap-2">
-            {!isDone && (
+          {/* ---- ACTIONS BY STAGE ---- */}
+
+          {stage === "FACE_NOTICE" && (
+            <div className="mt-4 grid gap-2">
               <button
-                onClick={() => { setStage("failure"); speak?.(STAGE_INSTRUCTION["failure"]); }}
+                onClick={startSimulation}
+                className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-3 text-base font-semibold text-primary-foreground hover:bg-primary/90"
+              >
+                <ShieldCheck className="h-4 w-4" /> Iniciar validación simulada
+              </button>
+              <button
+                onClick={simInstantSuccess}
+                className="inline-flex items-center justify-center gap-2 rounded-md bg-audio px-4 py-3 text-base font-semibold text-background hover:opacity-90"
+              >
+                <CheckCircle2 className="h-4 w-4" /> Simular validación exitosa
+              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={simFailure}
+                  className="rounded-md border border-input bg-background px-3 py-2 text-sm font-semibold text-muted-foreground hover:bg-accent"
+                >
+                  <XCircle className="mr-1 inline h-3.5 w-3.5" /> Simular fallo
+                </button>
+                <button
+                  onClick={() => goTo("FACE_PIN")}
+                  className="rounded-md border border-input bg-background px-3 py-2 text-sm font-semibold text-foreground hover:bg-accent"
+                >
+                  <KeyRound className="mr-1 inline h-3.5 w-3.5" /> Usar PIN alternativo
+                </button>
+                <button
+                  onClick={requestClose}
+                  className="ml-auto rounded-md px-3 py-2 text-sm font-semibold text-muted-foreground hover:bg-accent"
+                >
+                  Cancelar validación
+                </button>
+              </div>
+            </div>
+          )}
+
+          {stage === "FACE_POSITIONING" && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                onClick={simDetected}
+                className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-3 text-base font-semibold text-primary-foreground hover:bg-primary/90"
+              >
+                Simular rostro detectado
+              </button>
+              <button
+                onClick={simInstantSuccess}
+                className="inline-flex items-center gap-2 rounded-md bg-audio px-4 py-3 text-base font-semibold text-background hover:opacity-90"
+              >
+                <CheckCircle2 className="h-4 w-4" /> Simular validación exitosa
+              </button>
+              <button
+                onClick={simFailure}
                 className="rounded-md border border-input bg-background px-3 py-2 text-sm font-semibold text-muted-foreground hover:bg-accent"
               >
                 Simular fallo
               </button>
-            )}
-            {stage === "success" && (
               <button
-                onClick={() => onResult(true)}
+                onClick={requestClose}
+                className="ml-auto rounded-md px-3 py-2 text-sm font-semibold text-muted-foreground hover:bg-accent"
+              >
+                Cancelar
+              </button>
+            </div>
+          )}
+
+          {stage === "FACE_DETECTED" && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                onClick={simLiveness}
+                className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-3 text-base font-semibold text-primary-foreground hover:bg-primary/90"
+              >
+                Simular prueba de vida exitosa
+              </button>
+              <button
+                onClick={simInstantSuccess}
+                className="inline-flex items-center gap-2 rounded-md bg-audio px-4 py-3 text-base font-semibold text-background hover:opacity-90"
+              >
+                <CheckCircle2 className="h-4 w-4" /> Simular validación exitosa
+              </button>
+              <button
+                onClick={simFailure}
+                className="rounded-md border border-input bg-background px-3 py-2 text-sm font-semibold text-muted-foreground hover:bg-accent"
+              >
+                Simular fallo
+              </button>
+              <button
+                onClick={requestClose}
+                className="ml-auto rounded-md px-3 py-2 text-sm font-semibold text-muted-foreground hover:bg-accent"
+              >
+                Cancelar
+              </button>
+            </div>
+          )}
+
+          {stage === "FACE_LIVENESS" && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                onClick={simInstantSuccess}
+                className="inline-flex items-center gap-2 rounded-md bg-audio px-4 py-3 text-base font-semibold text-background hover:opacity-90"
+              >
+                <CheckCircle2 className="h-4 w-4" /> Confirmar validación exitosa
+              </button>
+              <button
+                onClick={simFailure}
+                className="rounded-md border border-input bg-background px-3 py-2 text-sm font-semibold text-muted-foreground hover:bg-accent"
+              >
+                Simular fallo
+              </button>
+              <button
+                onClick={requestClose}
+                className="ml-auto rounded-md px-3 py-2 text-sm font-semibold text-muted-foreground hover:bg-accent"
+              >
+                Cancelar
+              </button>
+            </div>
+          )}
+
+          {stage === "FACE_SUCCESS" && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                onClick={confirmSuccess}
                 className="inline-flex items-center gap-2 rounded-md bg-audio px-5 py-3 text-base font-semibold text-background hover:opacity-90"
               >
                 <ShieldCheck className="h-4 w-4" /> Continuar
               </button>
-            )}
-            {stage === "failure" && (
-              <>
+            </div>
+          )}
+
+          {stage === "FACE_FAILED" && (
+            <div className="mt-4 grid gap-2">
+              <button
+                onClick={() => goTo("FACE_POSITIONING")}
+                className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-3 text-base font-semibold text-primary-foreground hover:bg-primary/90"
+              >
+                <RefreshCw className="h-4 w-4" /> Reintentar validación
+              </button>
+              <button
+                onClick={() => goTo("FACE_PIN")}
+                className="inline-flex items-center justify-center gap-2 rounded-md border-2 border-input bg-background px-4 py-3 text-base font-semibold text-foreground hover:bg-accent"
+              >
+                <KeyRound className="h-4 w-4" /> Usar PIN alternativo
+              </button>
+              <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={() => setStage("ready")}
-                  className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-3 text-base font-semibold text-primary-foreground hover:bg-primary/90"
+                  onClick={reportFailureToAgent}
+                  className="inline-flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-semibold text-foreground hover:bg-accent"
                 >
-                  <RefreshCw className="h-4 w-4" /> Reintentar
+                  <ArrowLeft className="h-3.5 w-3.5" /> Volver atrás
                 </button>
                 <button
-                  onClick={() => onResult(false)}
-                  className="rounded-md border border-input bg-background px-4 py-3 text-base font-semibold text-foreground hover:bg-accent"
+                  onClick={reportFailureToAgent}
+                  className="inline-flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-semibold text-foreground hover:bg-accent"
+                >
+                  <LifeBuoy className="h-3.5 w-3.5" /> Hablar con una persona
+                </button>
+              </div>
+            </div>
+          )}
+
+          {stage === "FACE_CANCEL_CONFIRM" && (
+            <div className="mt-4 grid gap-2">
+              <div className="rounded-md border-2 border-warning/30 bg-warning/10 p-3 text-sm font-medium text-foreground">
+                ¿Quieres cancelar la validación de identidad? Si cancelas, no podré
+                continuar con este trámite personal.
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={reportCancel}
+                  className="inline-flex items-center gap-2 rounded-md bg-destructive px-4 py-3 text-base font-semibold text-destructive-foreground hover:opacity-90"
+                >
+                  Sí, cancelar validación
+                </button>
+                <button
+                  onClick={() => {
+                    setStage(prevStage === "FACE_CANCEL_CONFIRM" ? "FACE_NOTICE" : prevStage);
+                    announce(STAGE_INSTRUCTION[prevStage === "FACE_CANCEL_CONFIRM" ? "FACE_NOTICE" : prevStage]);
+                  }}
+                  className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-3 text-base font-semibold text-primary-foreground hover:bg-primary/90"
+                >
+                  No, continuar validación
+                </button>
+                <button
+                  onClick={() => goTo("FACE_PIN")}
+                  className="rounded-md border border-input bg-background px-3 py-2 text-sm font-semibold text-foreground hover:bg-accent"
                 >
                   Usar otro método
                 </button>
-              </>
-            )}
-            <button
-              onClick={onClose}
-              className="ml-auto rounded-md px-3 py-2 text-sm font-semibold text-muted-foreground hover:bg-accent"
-            >
-              Cancelar
-            </button>
-          </div>
+                <button
+                  onClick={reportCancel}
+                  className="rounded-md border border-input bg-background px-3 py-2 text-sm font-semibold text-foreground hover:bg-accent"
+                >
+                  Hablar con una persona
+                </button>
+              </div>
+            </div>
+          )}
+
+          {(stage === "FACE_PIN" || stage === "FACE_PIN_FAILED") && (
+            <div className="mt-4 grid gap-3">
+              <label
+                htmlFor="nawi-pin"
+                className="text-sm font-semibold text-foreground"
+              >
+                Ingresa el PIN simulado (demo: 1234)
+              </label>
+              <input
+                id="nawi-pin"
+                inputMode="numeric"
+                pattern="\d*"
+                maxLength={4}
+                value={pin}
+                onChange={(e) =>
+                  setPin(e.target.value.replace(/\D/g, "").slice(0, 4))
+                }
+                className="w-32 rounded-md border-2 border-input bg-background px-3 py-2 text-center text-2xl font-bold tracking-[0.5em] outline-none focus:border-primary"
+                aria-label="PIN simulado de 4 dígitos"
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={submitPin}
+                  disabled={pin.length !== 4}
+                  className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-3 text-base font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+                >
+                  Validar PIN
+                </button>
+                {stage === "FACE_PIN_FAILED" && (
+                  <button
+                    onClick={() => {
+                      setPin("");
+                      setStage("FACE_PIN");
+                    }}
+                    className="rounded-md border border-input bg-background px-3 py-2 text-sm font-semibold text-foreground hover:bg-accent"
+                  >
+                    Reintentar PIN
+                  </button>
+                )}
+                <button
+                  onClick={() => goTo("FACE_POSITIONING")}
+                  className="rounded-md border border-input bg-background px-3 py-2 text-sm font-semibold text-foreground hover:bg-accent"
+                >
+                  Reintentar validación facial
+                </button>
+                <button
+                  onClick={reportCancel}
+                  className="ml-auto rounded-md px-3 py-2 text-sm font-semibold text-muted-foreground hover:bg-accent"
+                >
+                  Hablar con una persona
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
