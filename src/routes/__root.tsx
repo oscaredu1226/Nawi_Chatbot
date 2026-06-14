@@ -84,7 +84,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "Ñawi es el asistente digital accesible del Gobierno Regional de Cusco. Realiza trámites por voz, texto o WhatsApp, con privacidad y validación de identidad.",
       },
       { name: "author", content: "Gobierno Regional de Cusco — Prototipo Ñawi" },
-      { property: "og:title", content: "Ñawi — Asistente Digital Accesible" },
+      { property: "og:title", content: "Ñawi — Asistente Digital Accesible del GORE Cusco" },
       {
         property: "og:description",
         content:
@@ -92,6 +92,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
+      { name: "twitter:title", content: "Ñawi — Asistente Digital Accesible del GORE Cusco" },
+      { name: "description", content: "Ñawi is an accessible public-sector prototype for GORE Cusco, replicating a government-formal, high-contrast design." },
+      { property: "og:description", content: "Ñawi is an accessible public-sector prototype for GORE Cusco, replicating a government-formal, high-contrast design." },
+      { name: "twitter:description", content: "Ñawi is an accessible public-sector prototype for GORE Cusco, replicating a government-formal, high-contrast design." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/fe7186cb-ac32-452d-9650-427dcc5d51c7/id-preview-b74abbbd--5a79fea3-bfbf-4a0c-b890-40bf7257858d.lovable.app-1781399392063.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/fe7186cb-ac32-452d-9650-427dcc5d51c7/id-preview-b74abbbd--5a79fea3-bfbf-4a0c-b890-40bf7257858d.lovable.app-1781399392063.png" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
