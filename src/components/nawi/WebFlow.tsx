@@ -10,7 +10,7 @@ import type { Option, Turn } from "@/lib/nawi/engine";
 
 export function WebFlow() {
   const agent = useNawiAgent("web");
-  const { state, speech, select, submitText, facialResult, reset, replay } = agent;
+  const { state, speech, select, submitText, facialResult, facialCancel, facialPinSuccess, reset, replay } = agent;
   const [input, setInput] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
 
